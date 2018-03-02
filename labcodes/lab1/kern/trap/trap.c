@@ -27,6 +27,9 @@ static void print_ticks() {
  * */
 static struct gatedesc idt[256] = {{0}};
 
+extern uintptr_t __vectors[];
+extern volatile size_t ticks;
+
 static struct pseudodesc idt_pd = {
     sizeof(idt) - 1, (uintptr_t)idt
 };
@@ -46,6 +49,14 @@ idt_init(void) {
       *     You don't know the meaning of this instruction? just google it! and check the libs/x86.h to know more.
       *     Notice: the argument of lidt is idt_pd. try to find it!
       */
+	
+	int i;
+	for(i = 0; i < 256; i ++){
+		SETGATE(idt[i], i == T_SYSCALL, GD_KTEXT, __vectors[i], i == T_SYSCALL ? 3 : 0);
+	}
+
+	lidt(&idt_pd);
+	
 }
 
 static const char *
@@ -147,6 +158,12 @@ trap_dispatch(struct trapframe *tf) {
          * (2) Every TICK_NUM cycle, you can print some info using a funciton, such as print_ticks().
          * (3) Too Simple? Yes, I think so!
          */
+		++ ticks;
+		if(ticks == TICK_NUM){
+			print_ticks();
+			ticks = 0;	
+		}	
+
         break;
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();
