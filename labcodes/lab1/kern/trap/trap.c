@@ -147,6 +147,8 @@ print_regs(struct pushregs *regs) {
     cprintf("  eax  0x%08x\n", regs->reg_eax);
 }
 
+static struct trapframe tf_n, *tf_p;
+
 /* trap_dispatch - dispatch based on what type of trap occurred */
 static void
 trap_dispatch(struct trapframe *tf) {
@@ -174,22 +176,65 @@ trap_dispatch(struct trapframe *tf) {
     case IRQ_OFFSET + IRQ_KBD:
         c = cons_getc();
         cprintf("kbd [%03d] %c\n", c, c);
+
+        if(c == '3'){
+
+            if(tf->tf_cs != USER_CS){
+                cprintf("Switch to USER.\n");
+                tf_n = *tf;
+                tf_n.tf_cs = USER_CS;
+                tf_n.tf_ds = tf_n.tf_es = tf_n.tf_ss = USER_DS;
+                tf_n.tf_esp = tf + sizeof(struct trapframe) - 8;
+                tf_n.tf_eflags |= 0x3000;
+
+                *((uint32_t*)tf - 1) = &tf_n;
+            }
+        } else if(c == '0'){
+            if(tf->tf_cs != KERNEL_CS){
+
+                cprintf("Switch to KERNEL.\n");
+                tf_p = tf + 2;
+                
+                memmove(tf_p, tf, sizeof(struct trapframe) - 8);
+                
+
+                tf_p->tf_cs = KERNEL_CS;
+                tf_p->tf_ds = tf_p->tf_es = KERNEL_DS;
+                tf_p->tf_eflags &= ~0x3000;
+                
+                *((uint32_t*)tf - 1) = tf_p;
+            }
+        }
+        
         break;
     //LAB1 CHALLENGE 1 : YOUR CODE you should modify below codes.
     case T_SWITCH_TOU:
         // switch to user mode
-        tf->tf_cs = USER_CS;
-        tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
-        tf->tf_eflags |= 0x3000;
+        if(tf->tf_cs != USER_CS){
+            asm volatile (
+                "addl 8, %esp;"
+            );
+            
 
+            tf->tf_cs = USER_CS;
+            tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
+            tf->tf_eflags |= 0x3000;
+        }
         break;
     case T_SWITCH_TOK:
         // switch to kernel mode
-        tf->tf_cs = KERNEL_CS;
-        tf->tf_ds = tf->tf_es = KERNEL_DS;
-        tf->tf_eflags &= ~0x3000;
+        if(tf->tf_cs != KERNEL_CS){
+            tf->tf_cs = KERNEL_CS;
+            tf->tf_ds = tf->tf_es = KERNEL_DS;
+            tf->tf_eflags &= ~0x3000;
+        }
 
         break;
+    // case IRQ_OFFSET + IRQ_KBD:
+    //     // keyboard input
+    //     cprintf("0x%02x\n", inb(0x60));
+
+    //     break;
     case IRQ_OFFSET + IRQ_IDE1:
     case IRQ_OFFSET + IRQ_IDE2:
         /* do nothing */
