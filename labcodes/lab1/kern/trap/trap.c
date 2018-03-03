@@ -52,7 +52,9 @@ idt_init(void) {
 	
 	int i;
 	for(i = 0; i < 256; i ++){
-		SETGATE(idt[i], i == T_SYSCALL, GD_KTEXT, __vectors[i], i == T_SYSCALL ? 3 : 0);
+		SETGATE(idt[i], i == T_SYSCALL || i == T_SWITCH_TOK ||
+            i == T_SWITCH_TOU, GD_KTEXT, __vectors[i], (i == T_SYSCALL
+             || i == T_SWITCH_TOK) ? 3 : 0);
 	}
 
 	lidt(&idt_pd);
@@ -175,8 +177,18 @@ trap_dispatch(struct trapframe *tf) {
         break;
     //LAB1 CHALLENGE 1 : YOUR CODE you should modify below codes.
     case T_SWITCH_TOU:
+        // switch to user mode
+        tf->tf_cs = USER_CS;
+        tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
+        tf->tf_eflags |= 0x3000;
+
+        break;
     case T_SWITCH_TOK:
-        panic("T_SWITCH_** ??\n");
+        // switch to kernel mode
+        tf->tf_cs = KERNEL_CS;
+        tf->tf_ds = tf->tf_es = KERNEL_DS;
+        tf->tf_eflags &= ~0x3000;
+
         break;
     case IRQ_OFFSET + IRQ_IDE1:
     case IRQ_OFFSET + IRQ_IDE2:
