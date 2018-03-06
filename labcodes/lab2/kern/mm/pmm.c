@@ -185,6 +185,22 @@ nr_free_pages(void) {
     return ret;
 }
 
+/*
+PDE(0e0) c0000000-f8000000 38000000 urw
+  |-- PTE(38000) c0000000-f8000000 38000000 -rw
+PDE(001) fac00000-fb000000 00400000 -rw
+  |-- PTE(000e0) faf00000-fafe0000 000e0000 urw
+  |-- PTE(00001) fafeb000-fafec000 00001000 -rw
+
+
+    memory: 0009fc00, [00000000, 0009fbff], type = 1.
+  memory: 00000400, [0009fc00, 0009ffff], type = 2.
+  memory: 00010000, [000f0000, 000fffff], type = 2.
+  memory: 07ee0000, [00100000, 07fdffff], type = 1.
+  memory: 00020000, [07fe0000, 07ffffff], type = 2.
+  memory: 00040000, [fffc0000, ffffffff], type = 2.
+  */
+
 /* pmm_init - initialize the physical memory management */
 static void
 page_init(void) {
@@ -368,6 +384,22 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
      *   PTE_W           0x002                   // page table/directory entry flags bit : Writeable
      *   PTE_U           0x004                   // page table/directory entry flags bit : User can access
      */
+    pde_t *pdep = pgdir + PDX(la);
+    uint32_t pa;
+    struct Page* page;
+    if(!(*pdep & PTE_P)){
+        if(create && (page = alloc_page()) != NULL){
+            pa = page2pa(page);
+            set_page_ref(page, 1);
+            memset(KADDR(pa), 0, PGSIZE); // clear the new page table
+            *pdep = pa | PTE_U | PTE_W | PTE_P;
+        } else{
+            return NULL;
+        }
+    }
+    // cprintf("%d\n", PDE_ADDR(*pdep));
+    return (pte_t*)KADDR(PDE_ADDR(*pdep)) + PTX(la);
+
 #if 0
     pde_t *pdep = NULL;   // (1) find page directory entry
     if (0) {              // (2) check if entry is not present
@@ -416,6 +448,20 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
      * DEFINEs:
      *   PTE_P           0x001                   // page table/directory entry flags bit : Present
      */
+    struct Page* page;
+    if(*ptep & PTE_P){
+        page = pte2page(*ptep);
+        
+        page_ref_dec(page);
+        if(page->ref == 0){
+            free_page(page);
+        }
+
+        *ptep = 0;
+        tlb_invalidate(pgdir, la); // this page entry is now invalid
+
+    }
+
 #if 0
     if (0) {                      //(1) check if this page table entry is present
         struct Page *page = NULL; //(2) find corresponding page to pte
@@ -447,11 +493,17 @@ page_remove(pde_t *pgdir, uintptr_t la) {
 int
 page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm) {
     pte_t *ptep = get_pte(pgdir, la, 1);
+
+    // cprintf(":::%d\n", *ptep);
+
     if (ptep == NULL) {
         return -E_NO_MEM;
     }
     page_ref_inc(page);
+
+    // cprintf("HAHA::\n");
     if (*ptep & PTE_P) {
+
         struct Page *p = pte2page(*ptep);
         if (p == page) {
             page_ref_dec(page);
@@ -462,6 +514,9 @@ page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm) {
     }
     *ptep = page2pa(page) | PTE_P | perm;
     tlb_invalidate(pgdir, la);
+
+    // cprintf("HAHA\n");
+
     return 0;
 }
 

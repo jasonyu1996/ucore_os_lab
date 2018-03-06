@@ -2,6 +2,7 @@ PROJ	:= 5
 EMPTY	:=
 SPACE	:= $(EMPTY) $(EMPTY)
 SLASH	:= /
+GCCPREFIX	:= "i386-elf-"
 
 V       := @
 
