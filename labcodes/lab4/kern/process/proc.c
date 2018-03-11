@@ -102,6 +102,10 @@ alloc_proc(void) {
      *       uint32_t flags;                             // Process flag
      *       char name[PROC_NAME_LEN + 1];               // Process name
      */
+        memset(proc, 0, sizeof(struct proc_struct));
+        proc->state = PROC_UNINIT;
+        proc->parent = current;
+        proc->cr3 = boot_cr3;
     }
     return proc;
 }
@@ -179,7 +183,7 @@ proc_run(struct proc_struct *proc) {
 //       after switch_to, the current proc will execute here.
 static void
 forkret(void) {
-    forkrets(current->tf);
+    forkrets(current->tf); // see trapentry.S
 }
 
 // hash_proc - add proc into proc hash_list
@@ -271,6 +275,24 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
         goto fork_out;
     }
     ret = -E_NO_MEM;
+
+    proc = alloc_proc();
+    proc->pid = get_pid();
+    hash_proc(proc);
+    list_add(&proc_list, &proc->list_link);
+    ++ nr_process;
+
+    // proc->kstack = stack;
+    if(setup_kstack(proc)){
+        goto bad_fork_cleanup_proc;
+    }
+
+    copy_mm(clone_flags, proc);
+    copy_thread(proc, stack, tf);
+
+    wakeup_proc(proc);
+    ret = proc->pid;
+    
     //LAB4:EXERCISE2 YOUR CODE
     /*
      * Some Useful MACROs, Functions and DEFINEs, you can use them in below implementation.

@@ -24,6 +24,9 @@ switch_to:                      # switch_to(from, to)
     movl 8(%eax), %ebx          # restore ebx::context of to
     movl 4(%eax), %esp          # restore esp::context of to
 
+
+    # note here that the stack frame has been reset
+    
     pushl 0(%eax)               # push eip
 
     ret
