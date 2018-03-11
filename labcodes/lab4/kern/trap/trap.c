@@ -28,7 +28,7 @@ static void print_ticks() {
  * be represented in relocation records.
  * */
 static struct gatedesc idt[256] = {{0}};
-
+extern uintptr_t __vectors[];
 static struct pseudodesc idt_pd = {
     sizeof(idt) - 1, (uintptr_t)idt
 };
@@ -48,6 +48,14 @@ idt_init(void) {
       *     You don't know the meaning of this instruction? just google it! and check the libs/x86.h to know more.
       *     Notice: the argument of lidt is idt_pd. try to find it!
       */
+    int i;
+	for(i = 0; i < 256; i ++){
+		SETGATE(idt[i], i == T_SYSCALL || i == T_SWITCH_TOK ||
+            i == T_SWITCH_TOU, GD_KTEXT, __vectors[i], (i == T_SYSCALL
+             || i == T_SWITCH_TOK) ? 3 : 0);
+	}
+
+	lidt(&idt_pd);
 }
 
 static const char *
@@ -161,6 +169,7 @@ pgfault_handler(struct trapframe *tf) {
 
 static volatile int in_swap_tick_event = 0;
 extern struct mm_struct *check_mm_struct;
+static struct trapframe tf_n, *tf_p;
 
 static void
 trap_dispatch(struct trapframe *tf) {
@@ -186,6 +195,11 @@ trap_dispatch(struct trapframe *tf) {
          * (2) Every TICK_NUM cycle, you can print some info using a funciton, such as print_ticks().
          * (3) Too Simple? Yes, I think so!
          */
+         ++ ticks;
+		if(ticks == TICK_NUM){
+			print_ticks();
+			ticks = 0;	
+		}	
         break;
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();
@@ -194,11 +208,57 @@ trap_dispatch(struct trapframe *tf) {
     case IRQ_OFFSET + IRQ_KBD:
         c = cons_getc();
         cprintf("kbd [%03d] %c\n", c, c);
+        if(c == '3'){
+
+            if(tf->tf_cs != USER_CS){
+                cprintf("Switch to USER.\n");
+                tf_n = *tf;
+                tf_n.tf_cs = USER_CS;
+                tf_n.tf_ds = tf_n.tf_es = tf_n.tf_ss = USER_DS;
+                tf_n.tf_esp = tf + sizeof(struct trapframe) - 8;
+                tf_n.tf_eflags |= 0x3000;
+
+                *((uint32_t*)tf - 1) = &tf_n;
+            }
+        } else if(c == '0'){
+            if(tf->tf_cs != KERNEL_CS){
+
+                cprintf("Switch to KERNEL.\n");
+                tf_p = tf + 2;
+                
+                memmove(tf_p, tf, sizeof(struct trapframe) - 8);
+                
+
+                tf_p->tf_cs = KERNEL_CS;
+                tf_p->tf_ds = tf_p->tf_es = KERNEL_DS;
+                tf_p->tf_eflags &= ~0x3000;
+                
+                *((uint32_t*)tf - 1) = tf_p;
+            }
+        }
         break;
     //LAB1 CHALLENGE 1 : YOUR CODE you should modify below codes.
     case T_SWITCH_TOU:
+        // switch to user mode
+        if(tf->tf_cs != USER_CS){
+            asm volatile (
+                "addl 8, %esp;"
+            );
+            
+
+            tf->tf_cs = USER_CS;
+            tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
+            tf->tf_eflags |= 0x3000;
+        }
+        break;
     case T_SWITCH_TOK:
-        panic("T_SWITCH_** ??\n");
+        // switch to kernel mode
+        if(tf->tf_cs != KERNEL_CS){
+            tf->tf_cs = KERNEL_CS;
+            tf->tf_ds = tf->tf_es = KERNEL_DS;
+            tf->tf_eflags &= ~0x3000;
+        }
+
         break;
     case IRQ_OFFSET + IRQ_IDE1:
     case IRQ_OFFSET + IRQ_IDE2:

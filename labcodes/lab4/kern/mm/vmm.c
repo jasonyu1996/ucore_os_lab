@@ -361,6 +361,33 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     *   mm->pgdir : the PDT of these vma
     *
     */
+    ptep = get_pte(mm->pgdir, addr, 1);
+    if(*ptep == 0){
+        pgdir_alloc_page(mm->pgdir, addr, perm);
+        // page->ref = 1;
+        // uint32_t pa = page2pa(page);
+        // *ptep = pa | PTE_P | perm;
+    } else{ // in this case, the page is expected in the disc
+        // we need to swap in the page from the disc
+        // struct Page* page = pa2page(PTE_ADDR(*ptep));
+
+        if(swap_init_ok){
+            struct Page* page;
+            swap_in(mm, addr, &page);
+            // *ptep = page2pa(*page_ptr) | PTE_P | perm;
+            // (*page_ptr)->ref = 1;
+            page->pra_vaddr = addr;
+
+            page_insert(mm->pgdir, page, addr, perm);
+            swap_map_swappable(mm, addr, page, 1);
+
+
+        } else {
+            cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);
+            goto failed;
+        }
+    }
+
 #if 0
     /*LAB3 EXERCISE 1: YOUR CODE*/
     ptep = ???              //(1) try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.

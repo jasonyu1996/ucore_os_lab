@@ -100,9 +100,13 @@ default_alloc_pages(size_t n) {
         if (page->property > n) {
             struct Page *p = page + n;
             p->property = page->property - n;
+
+            SetPageProperty(p);
+
             list_add(&free_list, &(p->page_link));
-    }
+        }
         nr_free -= n;
+        page->property = 0;
         ClearPageProperty(page);
     }
     return page;
@@ -113,37 +117,54 @@ default_free_pages(struct Page *base, size_t n) {
     assert(n > 0);
     struct Page *p = base;
     for (; p != base + n; p ++) {
-        assert(!PageReserved(p) && !PageProperty(p));
+        assert(!PageReserved(p) && !PageProperty(p)); // all allocated
         p->flags = 0;
         set_page_ref(p, 0);
     }
     base->property = n;
-    SetPageProperty(base);
+    SetPageProperty(base); // reclaim the block
+
+    // ----- merge if possible ----------
     list_entry_t *le = list_next(&free_list);
     while (le != &free_list) {
         p = le2page(le, page_link);
+        if(p > base + base->property)
+            break;
         le = list_next(le);
         if (base + base->property == p) {
+            // if p is the next guy of base
             base->property += p->property;
+            
+            p->property = 0;
+
             ClearPageProperty(p);
             list_del(&(p->page_link));
         }
         else if (p + p->property == base) {
+            // if p is the previous guy of p
             p->property += base->property;
             ClearPageProperty(base);
+
+            base->property = 0;
+
             base = p;
-            list_del(&(p->page_link));
+            list_del(&(p->page_link)); // this is correct, since we would finally insert base into the list
         }
     }
     nr_free += n;
-    list_add(&free_list, &(base->page_link));
+
+    // here it is necessary to maintain the order
+    le = list_next(&free_list);
+    while(le != &free_list && le2page(le, page_link) < base)
+        le = list_next(le);
+
+    list_add(list_prev(le), &(base->page_link));
 }
 
 static size_t
 default_nr_free_pages(void) {
     return nr_free;
 }
-
 static void
 basic_check(void) {
     struct Page *p0, *p1, *p2;
