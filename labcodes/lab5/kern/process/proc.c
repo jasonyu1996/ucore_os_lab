@@ -109,6 +109,10 @@ alloc_proc(void) {
      *       uint32_t wait_state;                        // waiting state
      *       struct proc_struct *cptr, *yptr, *optr;     // relations between processes
 	 */
+        memset(proc, 0, sizeof(struct proc_struct));
+        proc->state = PROC_UNINIT;
+        proc->parent = current;
+        proc->cr3 = boot_cr3;
     }
     return proc;
 }
@@ -370,6 +374,26 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
         goto fork_out;
     }
     ret = -E_NO_MEM;
+
+    proc = alloc_proc();
+
+    proc->pid = get_pid();    
+    set_links(proc);
+    hash_proc(proc);
+    
+
+    // list_add(&proc_list, &proc->list_link); // adding to list has been attributed to set_links
+    // ++ nr_process;
+
+    // proc->kstack = stack;
+    if(setup_kstack(proc)){
+        goto bad_fork_cleanup_proc;
+    }
+
+    copy_mm(clone_flags, proc);
+    copy_thread(proc, stack, tf);
+
+    
     //LAB4:EXERCISE2 YOUR CODE
     /*
      * Some Useful MACROs, Functions and DEFINEs, you can use them in below implementation.
@@ -403,6 +427,13 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
 	*    update step 1: set child proc's parent to current process, make sure current process's wait_state is 0
 	*    update step 5: insert proc_struct into hash_list && proc_list, set the relation links of process
     */
+    assert(current->wait_state == 0);
+
+    wakeup_proc(proc);
+
+    ret = proc->pid;
+
+    
 	
 fork_out:
     return ret;
@@ -493,9 +524,9 @@ load_icode(unsigned char *binary, size_t size) {
     }
     //(3) copy TEXT/DATA section, build BSS parts in binary to memory space of process
     struct Page *page;
-    //(3.1) get the file header of the bianry program (ELF format)
+    //(3.1) get the file header of the binary program (ELF format)
     struct elfhdr *elf = (struct elfhdr *)binary;
-    //(3.2) get the entry of the program section headers of the bianry program (ELF format)
+    //(3.2) get the entry of the program section headers of the binary program (ELF format)
     struct proghdr *ph = (struct proghdr *)(binary + elf->e_phoff);
     //(3.3) This program is valid?
     if (elf->e_magic != ELF_MAGIC) {
@@ -602,6 +633,12 @@ load_icode(unsigned char *binary, size_t size) {
      *          tf_eip should be the entry point of this binary program (elf->e_entry)
      *          tf_eflags should be set to enable computer to produce Interrupt
      */
+    tf->tf_cs = USER_CS;
+    tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
+    tf->tf_esp = USTACKTOP;
+    tf->tf_eip = elf->e_entry;
+    tf->tf_eflags |= FL_IF;
+
     ret = 0;
 out:
     return ret;
@@ -664,6 +701,7 @@ do_yield(void) {
 // NOTE: only after do_wait function, all resources of the child proces are free.
 int
 do_wait(int pid, int *code_store) {
+    // cprintf("WAITING....\n");
     struct mm_struct *mm = current->mm;
     if (code_store != NULL) {
         if (!user_mem_check(mm, (uintptr_t)code_store, sizeof(int), 1)) {
@@ -774,6 +812,7 @@ kernel_execve(const char *name, unsigned char *binary, size_t size) {
 // user_main - kernel thread used to exec a user program
 static int
 user_main(void *arg) {
+    // cprintf("USER MAIN STARTED!\n");
 #ifdef TEST
     KERNEL_EXECVE2(TEST, TESTSTART, TESTSIZE);
 #else
@@ -785,15 +824,20 @@ user_main(void *arg) {
 // init_main - the second kernel thread used to create user_main kernel threads
 static int
 init_main(void *arg) {
+    cprintf("......... Entering init_main ........\n");
+
+
     size_t nr_free_pages_store = nr_free_pages();
     size_t kernel_allocated_store = kallocated();
 
     int pid = kernel_thread(user_main, NULL, 0);
+    cprintf(".... User main pid = %d\n", pid);
     if (pid <= 0) {
         panic("create user_main failed.\n");
     }
 
     while (do_wait(0, NULL) == 0) {
+        cprintf("OOOOOO\n");
         schedule();
     }
 

@@ -384,6 +384,22 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
      *   PTE_W           0x002                   // page table/directory entry flags bit : Writeable
      *   PTE_U           0x004                   // page table/directory entry flags bit : User can access
      */
+    pde_t *pdep = pgdir + PDX(la);
+    uint32_t pa;
+    struct Page* page;
+    if(!(*pdep & PTE_P)){
+        if(create && (page = alloc_page()) != NULL){
+            pa = page2pa(page);
+            set_page_ref(page, 1);
+            memset(KADDR(pa), 0, PGSIZE); // clear the new page table
+            *pdep = pa | PTE_U | PTE_W | PTE_P;
+        } else{
+            return NULL;
+        }
+    }
+    // cprintf("%d\n", PDE_ADDR(*pdep));
+    return (pte_t*)KADDR(PDE_ADDR(*pdep)) + PTX(la);
+
 #if 0
     pde_t *pdep = NULL;   // (1) find page directory entry
     if (0) {              // (2) check if entry is not present
@@ -432,6 +448,19 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
      * DEFINEs:
      *   PTE_P           0x001                   // page table/directory entry flags bit : Present
      */
+    struct Page* page;
+    if(*ptep & PTE_P){
+        page = pte2page(*ptep);
+        
+        page_ref_dec(page);
+        if(page->ref == 0){
+            free_page(page);
+        }
+
+        *ptep = 0;
+        tlb_invalidate(pgdir, la); // this page entry is now invalid
+
+    }
 #if 0
     if (0) {                      //(1) check if this page table entry is present
         struct Page *page = NULL; //(2) find corresponding page to pte
@@ -495,6 +524,7 @@ copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool share) {
             start = ROUNDDOWN(start + PTSIZE, PTSIZE);
             continue ;
         }
+        // struct pte_t *nptep;
         //call get_pte to find process B's pte according to the addr start. If pte is NULL, just alloc a PT
         if (*ptep & PTE_P) {
             if ((nptep = get_pte(to, start, 1)) == NULL) {
@@ -513,7 +543,7 @@ copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool share) {
          *
          * Some Useful MACROs and DEFINEs, you can use them in below implementation.
          * MACROs or Functions:
-         *    page2kva(struct Page *page): return the kernel vritual addr of memory which page managed (SEE pmm.h)
+         *    page2kva(struct Page *page): return the kernel virtual addr of memory which page managed (SEE pmm.h)
          *    page_insert: build the map of phy addr of an Page with the linear addr la
          *    memcpy: typical memory copy function
          *
@@ -522,6 +552,17 @@ copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end, bool share) {
          * (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
          * (4) build the map of phy addr of  nage with the linear addr start
          */
+
+        uintptr_t src_addr = page2pa(page),
+            dst_addr = page2pa(npage);
+        // void* src_kvaddr = page2kva(page),
+        //     *dst_kvaddr = page2kva(npage);
+        // memcpy(dst_kvaddr, src_kvaddr, PGSIZE);
+        memcpy(KADDR(dst_addr), KADDR(src_addr), PGSIZE);
+        // *nptep = dst_kvaddr | PTE_P | perm;
+        page_insert(to, npage, start, perm);
+
+
         assert(ret == 0);
         }
         start += PGSIZE;

@@ -197,8 +197,9 @@ trap_dispatch(struct trapframe *tf) {
          */
          ++ ticks;
 		if(ticks == TICK_NUM){
+            current->need_resched = 1;
 			print_ticks();
-			ticks = 0;	
+			ticks = 0;
 		}	
         break;
     case IRQ_OFFSET + IRQ_COM1:
