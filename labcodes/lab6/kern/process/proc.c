@@ -113,6 +113,8 @@ alloc_proc(void) {
         proc->state = PROC_UNINIT;
         proc->parent = current;
         proc->cr3 = boot_cr3;
+        list_init(&proc->run_link);
+        skew_heap_init(&proc->lab6_run_pool);
     }
     return proc;
 }
@@ -368,6 +370,7 @@ copy_thread(struct proc_struct *proc, uintptr_t esp, struct trapframe *tf) {
  */
 int
 do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
+    // cprintf("FORKED!\n");
     int ret = -E_NO_FREE_PROC;
     struct proc_struct *proc;
     if (nr_process >= MAX_PROCESS) {
