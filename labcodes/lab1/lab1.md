@@ -5,7 +5,7 @@
 通过观察make "V="的输出以及Makefile文件的内容，我总结出生成ucore.img的过程如下：
 
 1. 生成kernel
-    1. 编译源文件（包括c和汇编），生成对象文件，例如   
+    1. 编译源文件（包括c和汇编），生成对象文件，例如
 
         ```
             i386-elf-gcc -Ikern/trap/ -fno-builtin -Wall -ggdb -m32 -gstabs -nostdinc  -fno-stack-protector -Ilibs/ -Ikern/debug/ -Ikern/driver/ -Ikern/trap/ -Ikern/mm/ -c kern/trap/vectors.S -o obj/kern/trap/vectors.o
@@ -16,14 +16,14 @@
         ```
 
         参数说明：
-            
-        * -I指定了头文件的位置
-        * -fno-builtin禁止编译器将以__builtin__开头的函数之外的函数识别为内建函数（即编译器直接提供了支持的需要特殊对待的函数）
-        * -ggdb要求编译器生成GDB专用的调试信息
-        * -nostdinc要求编译器忽视标准库头文件
-        * -fno-stack-protector禁止编译器应用栈保护机制。如果不加上这个标记编译器可能会在栈中加入一些额外的数据来进行一定程度的栈保护（检测栈缓冲区溢出），而这会影响栈布局的预测和控制
 
-    2. 链接对象文件
+        * -I指定了头文件的位置
+        * -fno-builtin禁止编译器将以__builtin__开头的函数之外的函数识别为内建函数（即编译器直接提供了支持的需要特殊对待的函数）
+        * -ggdb要求编译器生成GDB专用的调试信息
+        * -nostdinc要求编译器忽视标准库头文件
+        * -fno-stack-protector禁止编译器应用栈保护机制。如果不加上这个标记编译器可能会在栈中加入一些额外的数据来进行一定程度的栈保护（检测栈缓冲区溢出），而这会影响栈布局的预测和控制
+
+    2. 链接对象文件
 
         ```
         i386-elf-ld -m    elf_i386 -nostdlib -T tools/kernel.ld -o bin/kernel  obj/kern/init/init.o obj/kern/libs/readline.o obj/kern/libs/stdio.o obj/kern/debug/kdebug.o obj/kern/debug/kmonitor.o obj/kern/debug/panic.o obj/kern/driver/clock.o obj/kern/driver/console.o obj/kern/driver/intr.o obj/kern/driver/picirq.o obj/kern/trap/trap.o obj/kern/trap/trapentry.o obj/kern/trap/vectors.o obj/kern/mm/pmm.o  obj/libs/printfmt.o obj/libs/string.o
@@ -32,16 +32,16 @@
         参数说明：
 
         * -m elf_i386：指定链接目标为i386 ELF格式
-        * -nostdlib要求链接器忽略标准库目录，仅在命令行给出的位置查找需要的库进行链接
-        * -T指定链接脚本。这个链接脚本会替代连接器自导的默认链接脚本。粗略研究了一下链接脚本tools/kernel.ld，我发现它主要是指定了链接过程中每部分数据的组织顺序和方式等，例如`. = 0x100000;`指定了kernel在内存中的起始地址为0x100000
+        * -nostdlib要求链接器忽略标准库目录，仅在命令行给出的位置查找需要的库进行链接
+        * -T指定链接脚本。这个链接脚本会替代连接器自导的默认链接脚本。粗略研究了一下链接脚本tools/kernel.ld，我发现它主要是指定了链接过程中每部分数据的组织顺序和方式等，例如`. = 0x100000;`指定了kernel在内存中的起始地址为0x100000
 
-2. 生成bootblock.o
-    1. 编译源文件bootasm.S和bootmain.c，分别生成bootasm.o和bootmain.o：
+2. 生成bootblock.o
+    1. 编译源文件bootasm.S和bootmain.c，分别生成bootasm.o和bootmain.o：
 
         ```
             i386-elf-gcc -Iboot/ -fno-builtin -Wall -ggdb -m32 -gstabs -nostdinc  -fno-stack-protector -Ilibs/ -Os -nostdinc -c boot/bootasm.S -o obj/boot/bootasm.o
         ```
-        
+
         ```
             i386-elf-gcc -Iboot/ -fno-builtin -Wall -ggdb -m32 -gstabs -nostdinc  -fno-stack-protector -Ilibs/ -Os -nostdinc -c boot/bootmain.c -o obj/boot/bootmain.o
         ```
@@ -50,7 +50,7 @@
 
         * -m32指定编译器生成32位字长i386的代码
         * -gstabs指定生成stabs格式的调试信息（不带GDB扩展）
-        * -Os开启编译器对代码长度的优化。在编译bootloader时开启这个优化是因为整个bootloader必须能够放入硬盘的一个扇区中，长度限制比较紧
+        * -Os开启编译器对代码长度的优化。在编译bootloader时开启这个优化是因为整个bootloader必须能够放入硬盘的一个扇区中，长度限制比较紧
 
 
     2. 链接bootasm.o、bootmain.o生成bootblock.o
@@ -65,7 +65,7 @@
         * -e start 指定目标文件的入口地址为符号start（在bootasm.S文件中定义）
         * -Ttext 0x7C00 要求链接器进行重定位，将代码段放置于0x7c00位置（即BIOS初始化完成后跳转到的位置）
 
-3. 使用objcopy及sign工具生成bootblock：它们做的事情大概是将bootblock.o转为裸的二进制代码，然后再进行适当的包装（如加入0x55aa标记），生成BIOS可以识别的硬盘主引导扇区（放在了bin/bootblock文件中）
+3. 使用objcopy及sign工具生成bootblock：它们做的事情大概是将bootblock.o转为裸的二进制代码，然后再进行适当的包装（如加入0x55aa标记），生成BIOS可以识别的硬盘主引导扇区（放在了bin/bootblock文件中）
 
     ```
 	@$(OBJCOPY) -S -O binary $(call objfile,bootblock) $(call outfile,bootblock)
@@ -84,26 +84,26 @@
         dd if=bin/bootblock of=bin/ucore.img conv=notrunc
         ```
 
-        这里conv=notrunc表示覆盖镜像上重叠位置原有的数据
-    
+        这里conv=notrunc表示覆盖镜像上重叠位置原有的数据
+
     3. 从第二个扇区开始将kernel写入镜像
 
         ```
             dd if=bin/kernel of=bin/ucore.img seek=1 conv=notrunc
         ```
 
-        这里seek=1即要求dd将初始访问位置设置为1号扇区（第二个扇区）
+        这里seek=1即要求dd将初始访问位置设置为1号扇区（第二个扇区）
 
 ## 符合规范的硬盘主引导扇区特征
 
-符合规范的硬盘主引导扇区的最高两个字节应该是0x55aa，这从sign.c中可以可看出：
+符合规范的硬盘主引导扇区的最高两个字节应该是0x55aa，这从sign.c中可以可看出：
 
     buf[510] = 0x55;
     buf[511] = 0xAA;
 
 # 练习二
 
-* 可以发现，第一条指令位于0x0000fff0
+* 可以发现，第一条指令位于0x0000fff0
 
     ```
     (gdb) target remote localhost:1234
@@ -165,10 +165,10 @@
     0x00007c10 in ?? ()
     (gdb)
     ```
-    
+
     通过比较可以发现，此处jne的目标位置已经在链接的时候填入了具体的地址，在bootblock.asm中已经可以看到`jne 0x7c0a`。
 
-* 设置在内核第一条指令的断点
+* 设置在内核第一条指令的断点
 
     ```
     (gdb) b *0x100000
@@ -209,41 +209,41 @@
   100006:	ba 80 fd 10 00       	mov    $0x10fd80,%edx
   10000b:	b8 18 ea 10 00       	mov    $0x10ea18,%eax
   ```
-# 练习三
+# 练习三
 
 ## bootloader由实模式进入保护模式的方式
 
 ### 开启A20
 
-为了开启A20地址线，bootloader需要向8042键盘控制器发送命令更改其端口P2的P21引脚的输出（由0置为1）。
+为了开启A20地址线，bootloader需要向8042键盘控制器发送命令更改其端口P2的P21引脚的输出（由0置为1）。
 
-具体地，bootloader需要通过对IO端口0x60及0x64的输入输出操作来与8042键盘控制器进行交互。
+具体地，bootloader需要通过对IO端口0x60及0x64的输入输出操作来与8042键盘控制器进行交互。
 
 首先，在向8042键盘控制器IO写入数据前，要确保其输入缓冲为空，即等待其状态寄存器的位1变为0，而状态寄存器可以通过从0x64端口读入来获得：
 
     seta20.1:
-    inb $0x64, %al                        
+    inb $0x64, %al
     testb $0x2, %al
     jnz seta20.1
 
-然后向0x64端口写入相应的命令：
-    
-    movb $0xd1, %al                                
+然后向0x64端口写入相应的命令：
+
+    movb $0xd1, %al
     outb %al, $0x64
 
 这里0xd1就对应设置P2端口的命令。
 
-然后，bootloader需要向8042键盘控制器发送要设置的值。这具体通过向0x60端口输出数据实现（同样地，需要先确保键盘控制器输入缓冲为空）
+然后，bootloader需要向8042键盘控制器发送要设置的值。这具体通过向0x60端口输出数据实现（同样地，需要先确保键盘控制器输入缓冲为空）
 
     seta20.2:
-    inb $0x64, %al 
+    inb $0x64, %al
     testb $0x2, %al
     jnz seta20.2
 
     movb $0xdf, %al
-    outb %al, $0x60  
+    outb %al, $0x60
 
-这里，0xdf就是P2设置后的值。可以看到，bootloader将P2端口所有引脚的值都置为了1，其中包括A20地址线的使能位。
+这里，0xdf就是P2设置后的值。可以看到，bootloader将P2端口所有引脚的值都置为了1，其中包括A20地址线的使能位。
 
 ### 初始化GDT
 
@@ -251,29 +251,29 @@
 
 首先，bootloader中GDT如下：
 
-    .p2align 2                            
+    .p2align 2
     gdt:
     SEG_NULLASM
-    SEG_ASM(STA_X|STA_R, 0x0, 0xffffffff) 
+    SEG_ASM(STA_X|STA_R, 0x0, 0xffffffff)
     SEG_ASM(STA_W, 0x0, 0xffffffff)
 
     gdtdesc:
     .word 0x17
-    .long gdt       
+    .long gdt
 
-这里gdt是GDT的基地址。这个GDT包含了三个段描述符：空描述符（为了让选择GDT中0号段的段选择子成为保留的空段选择子），基地址为0、长度为4GB的代码段（可读可执行），基地址为0、长度为4GB的数据段（可读写）。
+这里gdt是GDT的基地址。这个GDT包含了三个段描述符：空描述符（为了让选择GDT中0号段的段选择子成为保留的空段选择子），基地址为0、长度为4GB的代码段（可读可执行），基地址为0、长度为4GB的数据段（可读写）。
 
-gdtdesc为设置GDTR内容的数据的起始地址。这段数据长6个字节，低两字节为0x17，及GDT尾部相对于起始地址偏移量（长度-1），高四字节为GDT起始地址。
+gdtdesc为设置GDTR内容的数据的起始地址。这段数据长6个字节，低两字节为0x17，及GDT尾部相对于起始地址偏移量（长度-1），高四字节为GDT起始地址。
 
 最后，bootloader通过
 
     lgdt gdtdesc
 
-设置GDTR，完成了GDT的初始化。
+设置GDTR，完成了GDT的初始化。
 
 ### 使能和进入保护模式
 
-bootloader在初始化GDT后，设置CR0中保护模式的使能位为1：
+bootloader在初始化GDT后，设置CR0中保护模式的使能位为1：
 
     movl %cr0, %eax
     orl $CR0_PE_ON, %eax
@@ -295,7 +295,7 @@ bootloader在初始化GDT后，设置CR0中保护模式的使能位为1：
 
 ## bootloader读取硬盘扇区的方式
 
-bootloader通过设置硬盘IO寄存器实现硬盘的读取（PIO方式）。
+bootloader通过设置硬盘IO寄存器实现硬盘的读取（PIO方式）。
 
 我们这个bootloader只读第一个IDE通道，其对应的IO寄存器为0x1f0~0x1f7。
 
@@ -323,7 +323,7 @@ bootloader通过设置硬盘IO寄存器实现硬盘的读取（PIO方式）。
 再次调用waitdisk等待硬盘执行命令将数据准备就绪。
 
 最后，bootloader通过insl指令从0x1f0读取扇区数据并写到指定的内存地址：
-    
+
     asm volatile (
             "cld;"
             "repne; insl;"
@@ -334,7 +334,7 @@ bootloader通过设置硬盘IO寄存器实现硬盘的读取（PIO方式）。
 
 ## bootloader加载ELF格式
 
-bootloader从硬盘读取了8个扇区（一个页）的数据放置于以0x10000为起始地址的连续内存空间中：
+bootloader从硬盘读取了8个扇区（一个页）的数据放置于以0x10000为起始地址的连续内存空间中：
 
     readseg((uintptr_t)ELFHDR, SECTSIZE * 8, 0);
 
@@ -352,7 +352,7 @@ bootloader接下来读取ELF的程序头，从硬盘读入各个段的数据以�
         readseg(ph->p_va & 0xFFFFFF, ph->p_memsz, ph->p_offset);
     }
 
-将各段的数据装入内存后，bootloader将PC指向进程入口地址ELFHDR->e_entry。此操作将控制权正式交给了OS kernel。
+将各段的数据装入内存后，bootloader将PC指向进程入口地址ELFHDR->e_entry。此操作将控制权正式交给了OS kernel。
 
     ((void (*)(void))(ELFHDR->e_entry & 0xFFFFFF))();
 
@@ -383,7 +383,7 @@ bootloader接下来读取ELF的程序头，从硬盘读入各个段的数据以�
 		cprintf("\n");
 		eip = *((uint32_t*)ebp + 1);
 		ebp = *((uint32_t*)ebp);
-	} while(ebp != 0);	
+	} while(ebp != 0);
 
 输出如下：
 
@@ -457,17 +457,17 @@ bootloader接下来读取ELF的程序头，从硬盘读入各个段的数据以�
 
 ## 中断描述符表项
 
-中断描述符表项长度为8个字节。其中处理程序入口为：第16位~第31位的段选择子+高16位和低16位拼接而成的偏移量。
+中断描述符表项长度为8个字节。其中处理程序入口为：第16位~第31位的段选择子+高16位和低16位拼接而成的偏移量。
 
 ## IDT初始化
 
 IDT表项中的中断处理程序入口逻辑地址全部保存在vector.S中__vectors位置开始的连续空间中，每一项占两个字（4个字节）。
 
-trap.c中，内核对IDT进行了初始化。整个IDT的内容存储在idt中：
+trap.c中，内核对IDT进行了初始化。整个IDT的内容存储在idt中：
 
     static struct gatedesc idt[256] = {{0}};
 
-在idt_init函数内，内核向idt内填充IDT表项。表项的设置过程使用了SETGATE宏。SETGATE会根据给定的参数设置好IDT表项的内容：
+在idt_init函数内，内核向idt内填充IDT表项。表项的设置过程使用了SETGATE宏。SETGATE会根据给定的参数设置好IDT表项的内容：
 
     int i;
 	for(i = 0; i < 256; i ++){
@@ -475,27 +475,27 @@ trap.c中，内核对IDT进行了初始化。整个IDT的内容存储在idt中�
             i == T_SWITCH_TOU, GD_KTEXT, __vectors[i], (i == T_SYSCALL
              || i == T_SWITCH_TOK) ? 3 : 0);
 	}
-
+
 ## 时钟中断
 
-为了让内核每100次时钟中断后调用print_ticks函数向屏幕打印信息，我在trap.c的trap_dispatch函数中修改了对IRQ_OFFSET + IRQ_TIMER类型中断的处理：
+为了让内核每100次时钟中断后调用print_ticks函数向屏幕打印信息，我在trap.c的trap_dispatch函数中修改了对IRQ_OFFSET + IRQ_TIMER类型中断的处理：
 
     ++ ticks;
     if(ticks == TICK_NUM){
         print_ticks();
-        ticks = 0;	
+        ticks = 0;
     }
 
-其中ticks是一个用于计响应记录时钟中断数量的变量，TICK_NUM=100。每当ticks增长到TICK_NUM时，就调用print_ticks并将ticks重置。
+其中ticks是一个用于计响应记录时钟中断数量的变量，TICK_NUM=100。每当ticks增长到TICK_NUM时，就调用print_ticks并将ticks重置。
 
 # 扩展练习
 
 
 ## 用户态到内核态
 
-讲道理的话，操作系统允许应用程序通过系统调用就能实现从用户态到内核态的转换，其实是非常不科学的一件事。不过，这个练习可能也只是一个练习，并不会在实际的操作系统设计中出现。
+讲道理的话，操作系统允许应用程序通过系统调用就能实现从用户态到内核态的转换，其实是非常不科学的一件事。不过，这个练习可能也只是一个练习，并不会在实际的操作系统设计中出现。
 
-为了实现这个功能，需要利用中断返回过程的特点。关键在于，系统当前的特权级体现在段寄存器的内容上，CS段寄存器并不能直接像普通的寄存器那样写入，但是可以通过iret指令从栈中恢复段寄存器的特点来进行设置。于是，我所做的就是巧妙地构造出栈，使得iret指令能够让程序继续执行，但是段寄存器的值已被另外修改。
+为了实现这个功能，需要利用中断返回过程的特点。关键在于，系统当前的特权级体现在段寄存器的内容上，CS段寄存器并不能直接像普通的寄存器那样写入，但是可以通过iret指令从栈中恢复段寄存器的特点来进行设置。于是，我所做的就是巧妙地构造出栈，使得iret指令能够让程序继续执行，但是段寄存器的值已被另外修改。
 
         if(tf->tf_cs != KERNEL_CS){
             tf->tf_cs = KERNEL_CS;
@@ -504,9 +504,9 @@ trap.c中，内核对IDT进行了初始化。整个IDT的内容存储在idt中�
         }
 
 
-x86中断产生时，硬件会向栈中压入：err、cs、eip、eflags，当中断涉及特权级变化（即在用户态产生中断）时，硬件会在压入上列寄存器之前先压入esp和ss。除了修改栈中保存的段寄存器，我还需要考虑esp和ss在什么时候应该删去，什么时候应该额外补上。
+x86中断产生时，硬件会向栈中压入：err、cs、eip、eflags，当中断涉及特权级变化（即在用户态产生中断）时，硬件会在压入上列寄存器之前先压入esp和ss。除了修改栈中保存的段寄存器，我还需要考虑esp和ss在什么时候应该删去，什么时候应该额外补上。
 
-这里由于系统调用是从用户态陷入了内核态，栈中会保存有esp和ss寄存器，但是在修改了cs寄存器后，硬件通过对其进行判断，发现是从内核态返回到内核态，便不会从栈中取出esp和ss，故系统调用返回后栈顶会多出esp和ss，这时我们不希望发生的。解决办法非常简单，只需要在系统调用后调整栈顶位置，将栈复原即可。
+这里由于系统调用是从用户态陷入了内核态，栈中会保存有esp和ss寄存器，但是在修改了cs寄存器后，硬件通过对其进行判断，发现是从内核态返回到内核态，便不会从栈中取出esp和ss，故系统调用返回后栈顶会多出esp和ss，这时我们不希望发生的。解决办法非常简单，只需要在系统调用后调整栈顶位置，将栈复原即可。
 
     static void
     lab1_switch_to_kernel(void) {
@@ -514,16 +514,16 @@ x86中断产生时，硬件会向栈中压入：err、cs、eip、eflags，当�
         asm volatile (
             "int %0 \n"
             "movl %%ebp, %%esp \n"
-            : 
+            :
             : "i"(T_SWITCH_TOK)
         );
     }
 
-值得一提的是，这里为了将栈复原，我直接将ebp的值赋给了esp。这是由于lab1_switch_to_kernel是一个函数，且这个函数的栈帧始终为空，因此我们可以确定在进行特权级切换前esp与ebp的值相等。
+值得一提的是，这里为了将栈复原，我直接将ebp的值赋给了esp。这是由于lab1_switch_to_kernel是一个函数，且这个函数的栈帧始终为空，因此我们可以确定在进行特权级切换前esp与ebp的值相等。
 
 ## 内核态到用户态
 
-从内核态转变到用户态的做法是类似的，只是处理esp和ss的时候有些区别。在这种情况下，系统调用是在内核态发生的，没有特权级的变化，因而硬件不会压入esp和ss，但在系统调用返回时，由于中间cs寄存器发生了变化，返回时存在特权级变化，硬件会从栈中取出esp和ss。为了让系统调用返回时硬件能够取出正常的esp和ss，保持栈与进行特权级转换操作前相同，我在进行系统调用前先手动在栈中留出了esp和ss的空间：
+从内核态转变到用户态的做法是类似的，只是处理esp和ss的时候有些区别。在这种情况下，系统调用是在内核态发生的，没有特权级的变化，因而硬件不会压入esp和ss，但在系统调用返回时，由于中间cs寄存器发生了变化，返回时存在特权级变化，硬件会从栈中取出esp和ss。为了让系统调用返回时硬件能够取出正常的esp和ss，保持栈与进行特权级转换操作前相同，我在进行系统调用前先手动在栈中留出了esp和ss的空间：
 
     asm volatile (
         "sub $0x8, %%esp;"
@@ -537,7 +537,7 @@ x86中断产生时，硬件会向栈中压入：err、cs、eip、eflags，当�
         asm volatile (
             "addl 8, %esp;"
         );
-        
+
 
         tf->tf_cs = USER_CS;
         tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
@@ -549,6 +549,6 @@ x86中断产生时，硬件会向栈中压入：err、cs、eip、eflags，当�
 
 ## 键盘中断处理
 
-键盘中断属于IRQ类型的中断，其IRQ号为1。只要加入对这种类型中断的处理就可以了。
+键盘中断属于IRQ类型的中断，其IRQ号为1。只要加入对这种类型中断的处理就可以了。
 
 
