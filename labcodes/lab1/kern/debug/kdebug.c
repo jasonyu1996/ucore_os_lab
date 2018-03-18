@@ -307,11 +307,11 @@ print_stackframe(void) {
 	do{
 		cprintf("ebp=0x%08x, eip=0x%08x\n", ebp, eip);
 		cprintf("\tArgs:\n");
-		for(i = 0; i < 5; i ++)
-			cprintf("\t\t0x%08x\n", *((uint32_t*)(ebp + 2 + i)));
+		for(i = 0; i < 4; i ++)
+			cprintf("\t\t0x%08x\n", *((uint32_t*)ebp + 2 + i));
 		print_debuginfo(eip - 1);
 		cprintf("\n");
-		eip = *((uint32_t*)(ebp + 4));
+		eip = *((uint32_t*)ebp + 1);
 		ebp = *((uint32_t*)ebp);
 	} while(ebp != 0);	
 
