@@ -197,7 +197,6 @@ trap_dispatch(struct trapframe *tf) {
          */
          ++ ticks;
 		if(ticks == TICK_NUM){
-            current->need_resched = 1;
 			print_ticks();
 			ticks = 0;
 		}	

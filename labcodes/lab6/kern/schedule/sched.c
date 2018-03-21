@@ -94,6 +94,7 @@ schedule(void) {
         }
         next->runs ++;
         if (next != current) {
+            // cprintf("Switch to %d, %d\n", next, next->pid);
             proc_run(next);
         }
     }

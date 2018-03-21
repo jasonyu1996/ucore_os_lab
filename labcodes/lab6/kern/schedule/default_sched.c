@@ -41,12 +41,18 @@ stride_init(struct run_queue *rq) {
       * (2) init the run pool: rq->lab6_run_pool
       * (3) set number of process: rq->proc_num to 0       
       */
+      #if USE_SKEW_HEAP
+            rq->lab6_run_pool = NULL;
+      #else
       list_init(&rq->run_list);
-      rq->lab6_run_pool = NULL;
+      #endif
       // skew_heap_init(rq->lab6_run_pool);
       rq->proc_num = 0;
 }
 
+
+inline int max(int a, int b) { return a > b ? a : b; }
+inline int min(int a, int b) { return a < b ? a : b; }
 /*
  * stride_enqueue inserts the process ``proc'' into the run-queue
  * ``rq''. The procedure should verify/initialize the relevant members
@@ -72,12 +78,18 @@ stride_enqueue(struct run_queue *rq, struct proc_struct *proc) {
       * (4) increase rq->proc_num
       */
       // cprintf("ENQUE!\n");
+      #ifdef USE_SKEW_HEAP
       if(rq->lab6_run_pool == NULL)
             rq->lab6_run_pool = &proc->lab6_run_pool;
       else
             rq->lab6_run_pool = skew_heap_insert(rq->lab6_run_pool, &proc->lab6_run_pool, proc_stride_comp_f);
+      #else
       list_add_before(&rq->run_list, &proc->run_link);
+      #endif
       
+
+      // I do not know why
+      // if(proc->time_slice == 0 || proc->time_slice > rq->max_time_slice)
       proc->time_slice = rq->max_time_slice;
       proc->rq = rq;
       ++ rq->proc_num;
@@ -100,8 +112,11 @@ stride_dequeue(struct run_queue *rq, struct proc_struct *proc) {
       *         list_del_init: remove a entry from the  list
       */
       // cprintf("DEQ!\n");
+      #if USE_SKEW_HEAP
       rq->lab6_run_pool = skew_heap_remove(rq->lab6_run_pool, &proc->lab6_run_pool, proc_stride_comp_f);
+      #else
       list_del_init(&proc->run_link);
+      #endif
       proc->rq = NULL;
       -- rq->proc_num;
 }
@@ -145,6 +160,11 @@ stride_pick_next(struct run_queue *rq) {
             }
       }
       #endif
+      if(next_proc->lab6_priority == 0)
+            next_proc->lab6_stride += BIG_STRIDE;
+      else
+            next_proc->lab6_stride += BIG_STRIDE / next_proc->lab6_priority;
+
       return next_proc;
 }
 

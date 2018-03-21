@@ -241,12 +241,8 @@ trap_dispatch(struct trapframe *tf) {
          * IMPORTANT FUNCTIONS:
 	     * run_timer_list
          */
-         ++ ticks;
-		if(ticks == TICK_NUM){
-			print_ticks();
-			ticks = 0;
-
-		}
+        ++ ticks;
+        run_timer_list();
         // sched_class_proc_tick(current);
         
         break;

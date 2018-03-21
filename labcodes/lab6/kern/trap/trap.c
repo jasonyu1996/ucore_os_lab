@@ -236,12 +236,12 @@ trap_dispatch(struct trapframe *tf) {
          * IMPORTANT FUNCTIONS:
 	     * sched_class_proc_tick
          */
-         ++ ticks;
-		if(ticks == TICK_NUM){
-			print_ticks();
-			ticks = 0;
-
-		}
+         ++ ticks; // yes, this is used for gettime sys call
+		// if(ticks == TICK_NUM){
+			// print_ticks();
+			// ticks = 0;
+		// }
+        
         sched_class_proc_tick(current);
         
         break;
