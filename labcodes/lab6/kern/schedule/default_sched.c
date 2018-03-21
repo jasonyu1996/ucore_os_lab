@@ -79,10 +79,7 @@ stride_enqueue(struct run_queue *rq, struct proc_struct *proc) {
       */
       // cprintf("ENQUE!\n");
       #ifdef USE_SKEW_HEAP
-      if(rq->lab6_run_pool == NULL)
-            rq->lab6_run_pool = &proc->lab6_run_pool;
-      else
-            rq->lab6_run_pool = skew_heap_insert(rq->lab6_run_pool, &proc->lab6_run_pool, proc_stride_comp_f);
+      rq->lab6_run_pool = skew_heap_insert(rq->lab6_run_pool, &proc->lab6_run_pool, proc_stride_comp_f);
       #else
       list_add_before(&rq->run_list, &proc->run_link);
       #endif
@@ -160,11 +157,12 @@ stride_pick_next(struct run_queue *rq) {
             }
       }
       #endif
-      if(next_proc->lab6_priority == 0)
-            next_proc->lab6_stride += BIG_STRIDE;
-      else
-            next_proc->lab6_stride += BIG_STRIDE / next_proc->lab6_priority;
-
+      if(next_proc != NULL){
+            if(next_proc->lab6_priority == 0)
+                  next_proc->lab6_stride += BIG_STRIDE;
+            else
+                  next_proc->lab6_stride += BIG_STRIDE / next_proc->lab6_priority;
+       }
       return next_proc;
 }
 
