@@ -2,7 +2,7 @@
 #include<pmm.h>
 #include<string.h>
 
-#define BUDDY_GROUP_N 33
+#define BUDDY_GROUP_N 21
 
 typedef struct {
     list_entry_t free_list[BUDDY_GROUP_N];
@@ -99,7 +99,7 @@ static void buddy_free_pages(struct Page* base, size_t n){
     SetPageProperty(base);
     ClearPageReserved(base);
     base->property = 1 << k;
-
+    set_page_ref(base, 0);
 
     nr_free += 1 << k;
 
@@ -186,7 +186,7 @@ static void buddy_check(void){
     // cprintf("%d\n", i);
     page = buddy_alloc_pages(1 << i);
 
-    cprintf("%u, %u\n", nr1, nr2);
+    // cprintf("%u, %u\n", nr1, nr2);
     nr2 = get_total_block_nr();
 
     assert(buddy_nr_free_pages() == pre - (1 << i));
@@ -197,6 +197,20 @@ static void buddy_check(void){
     
     nr2 = get_total_block_nr();
     assert(nr1 == nr2);
+
+    for(i = 1; !list_empty(free_list + i); i ++);
+    page = buddy_alloc_pages(1 << i);
+
+    nr2 = get_total_block_nr();
+    assert(buddy_nr_free_pages() == pre - (1 << i));
+
+    assert(nr1 <= nr2);
+    buddy_free_pages(page, 1 << i);
+
+    for(i = BUDDY_GROUP_N - 1; list_empty(free_list + i); i ++);
+    ++ i;
+    page = buddy_alloc_pages(1 << i);
+    assert(page == NULL);
 }
 
 const struct pmm_manager default_pmm_manager = {

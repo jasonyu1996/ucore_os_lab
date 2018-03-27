@@ -41,7 +41,6 @@
 * 读写位也可以让ucore对数据加以保护。例如在copy on write机制下，系统可以先将共享的页设置为只读，在写入时利用异常处理对数据进行复制
 * 存在位让ucore能够判断页是否已经映射到物理页帧（或者数据是否在内存中）
 * 脏位让ucore在换出页帧时能够决定是否将数据写回到外存中
-* 全局位……
 
 出现页访问异常时，硬件需要在栈中保存一部分现场，保存异常的相关信息，然后进入内核态，转到中断处理程序的入口地址执行。
 
@@ -49,9 +48,7 @@
 
 Page的全局变量是在page_init中设定的，每一个Page对应了一个物理页帧，数据结构中保留了对应的元数据。全局Page数据结构的起始地址是pages。对于其中一项p，其对应的物理页帧的起始物理地址为
 
-    ```
     (p - pages) << 12
-    ```
 
 Page与页目录项和页表项的对应关系包括了：
 * 每一个有效的页目录项和页表项都对应了一个Page。页目录项和页表项相当于是对Page的索引项，页目录表和页表提供根据索引号获取对应Page的机制
@@ -65,15 +62,116 @@ Page与页目录项和页表项的对应关系包括了：
 * 在页表中进行设置，将线性地址映射到相同的物理地址上
 
 
-# buddy system
+# 扩展实验：buddy system
 
-实现，设计文档，测试样例
+本实验中我实现了Buddy system。它可以替换default_pmm_manager作为内核的连续物理内存管理机制。
 
-# slub
+具体实现请见kern/mm/buddy.c.0文件。
 
-实现，设计文档，测试样例
+## 设计与实现
+
+### 数据结构
+
+我实现的Buddy System使用了如下的数据结构：
+
+    typedef struct {
+        list_entry_t free_list[BUDDY_GROUP_N];
+        unsigned int nr_free;
+    } buddy_free_area_t;
+
+其中，`free_list`将所有空闲块按照大小（均为2的整数次幂）分类并分别使用链表进行维护，`BUDDY_GROUP_N=21`是由于页帧的数量不超过2的20次方。
+
+另外，为了记录页帧数据结构（Page）的首地址以及界限，Buddy System维护了
+
+    struct Page* pages; // the pages should be aligned
+    unsigned int high;
+
+### 初始化
+
+初始化过程包括初始化`free_list`的每个链表以及将`nr_free, pages, high`清零。
+
+### 初始化可用块
+
+为了保证我的实现能够提供与First Fit完全一致的接口，我假定第一次调用init_memmap函数时所给的base参数即为页帧数据结构的首地址。在正式的初始化过程中，我计算所有页帧数据结构相对于该地址的偏移量以获知页帧在内存中的分布情况。
+
+由于所给的块的大小可能不是2的整数次幂，且所给块可能并未按照Buddy System的要求进行对齐，我首先给的块进行了切分。具体地，我计算得到一个最大的2^i，它满足2^i <= n且起始地址关于2^i对齐（即偏移量的末i位为0），然后将头部大小为2^i的块从整个块中切除并加入对应的free_list链表中，再对余下部分重复上面的操作。这样，整个内存块就可以被划分为一组按照Buddy System要求对齐并且长度均为2的整数次幂的内存块。
+
+### 分配页帧
+
+分配n个页帧时，我找到最小的2^k，满足2^k >= n且free_list[k]不为空。然后，我再将其不断进行对半剖分直至得到一个大小为2^m的空闲块，使2^m >= n且2^(m - 1) < n。alloc_pages函数会将整个大小为2^m的块都分配出去。
+
+### 释放页帧
+
+在这里，我假定每次释放与每次分配是对应的。也就是说，如果释放了起始地址为base的n个页帧，我假定之前有一次分配过n个页帧，且分配出去的内存块的起始地址恰好为base。这样，我可以得到系统实际应当回收的页帧数量，为2^ceil(log n)。接下来，令`k=ceil(log n)`。
+
+在恢复Page数据结构的相应属性后，我会检查当前回收的内存块能否与相邻的空闲块（Buddy）进行合并。合并会发生当且仅当相邻空闲块大小也为`2^k`，且合并后大块的起始地址关于`2^(k+1)`对齐。容易想到，系统不可能同时可以与左右侧的空闲块进行合并（buddy最多有一个）。如果合并发生，对新得到的大小为`2^(k+1)`的空闲块重复上面的操作。
+
+## 测试
+
+在`buddy_check`函数中我设计了几组测试样例以保证Buddy System算法实现的基本正确。测试样例包括：
+
+* 申请分配1个页帧后释放
+* 申请分配3个页帧后释放
+* 申请分配2^i个页帧，其中i满足free_list[i]不为空
+* 申请分配2^i个页帧，其中i满足free_list[i]为空
+
+我的实现通过了上列所有测试样例。
 
 # 与参考答案的比较
+
+## First Fit
+在将我对First Fit算法的实现与参考实现进行比较时，我发现了如下主要差异：
+
+* 参考实现将所有空闲物理页帧维护在free_list链表中，而我的实现中仅在free_list里维护空闲块的第一个页面。例如，可以在init_memmap方法中清楚地看到这点差异：
+
+
+    我的实现：
+
+    ```
+        static void
+    default_init_memmap(struct Page *base, size_t n) {
+        assert(n > 0);
+        struct Page *p = base;
+        for (; p != base + n; p ++) {
+            assert(PageReserved(p));
+            p->flags = p->property = 0;
+            set_page_ref(p, 0);
+        }
+        base->property = n;
+        SetPageProperty(base);
+        nr_free += n;
+        list_add(&free_list, &(base->page_link));
+    }
+
+    ```
+
+    参考实现：
+
+    ```
+            static void
+    default_init_memmap(struct Page *base, size_t n) {
+        assert(n > 0);
+        struct Page *p = base;
+        for (; p != base + n; p ++) {
+            assert(PageReserved(p));
+            p->flags = 0;
+            SetPageProperty(p);
+            p->property = 0;
+            set_page_ref(p, 0);
+            list_add_before(&free_list, &(p->page_link));
+        }
+        nr_free += n;
+        //first block
+        base->property = n;
+    }
+    ```
+
+    我认为，这一点差异使我的实现比参考实现更高效，因为我的实现在alloc_pages中遍历free_list时的跳数上界仅与空闲块的数量有关，与空闲块的大小无关。
+* 在释放内存块时，参考实现仅将第一个页帧的引用计数置零，而我的实现将其中所有页帧的引用计数置零。我还不太清楚为什么参考实现可以只置零第一个页帧的引用计数，因为我感觉页帧引用计数的维护应该以单独的页帧为粒度而不是以每次分配的连续的内存块为粒度。
+
+## 二级页表
+
+我没有发现这个任务中我的实现与参考实现存在值得一提的差异。
 
 # 重要知识点
 
