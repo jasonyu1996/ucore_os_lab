@@ -371,6 +371,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     ptep = get_pte(mm->pgdir, addr, 1);
     if(*ptep == 0){ // not mapped, create a new page
         pgdir_alloc_page(mm->pgdir, addr, perm);
+        
         // page->ref = 1;
         // uint32_t pa = page2pa(page);
         // *ptep = pa | PTE_P | perm;
