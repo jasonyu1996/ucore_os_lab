@@ -1,0 +1,211 @@
+#include<default_pmm.h>
+#include<pmm.h>
+#include<string.h>
+
+#define BUDDY_GROUP_N 33
+
+typedef struct {
+    list_entry_t free_list[BUDDY_GROUP_N];
+    unsigned int nr_free;
+} buddy_free_area_t;
+
+buddy_free_area_t free_area;
+
+#define free_list (free_area.free_list)
+#define nr_free (free_area.nr_free)
+
+struct Page* pages; // the pages should be aligned
+unsigned int high;
+
+static void buddy_init(void){
+    int i;
+    for(i = 0; i < BUDDY_GROUP_N; i ++)
+        list_init(free_list + i);
+    nr_free = 0;
+    pages = NULL;
+    high = 0;
+}
+
+static void buddy_init_memmap(struct Page *base, size_t n) {
+    if(pages == NULL)
+        pages = base;
+
+    assert(base >= pages);
+
+    struct Page* end = base + n, *cur;
+    for(cur = base; cur != end; cur ++){
+        cur->property = 0;
+        cur->flags = 0;
+        set_page_ref(cur, 0);
+    }
+    for(cur = base; cur != end; ){
+        unsigned int step = 1, k = 0;
+        while((cur - pages + (step << 1)) <= (end - pages) && ((cur - pages) & (step << 1) - 1) == 0){
+            step <<= 1;
+            ++ k;
+        }
+        assert(cur >= pages);
+        cur->property = step;
+        SetPageProperty(cur);
+        list_add(free_list + k, &cur->page_link);
+
+        cur += step;
+    }
+    nr_free += n;
+
+    if((base - pages + n) > high)
+        high = base - pages + n;
+}
+
+static struct Page* buddy_alloc_pages(size_t n){
+    unsigned int k = 0;
+    while(k < BUDDY_GROUP_N && ((1 << k) < n || list_empty(free_list + k)))
+        ++ k;
+    if(k == BUDDY_GROUP_N)
+        return NULL;
+
+    while(k && (1 << (k - 1)) >= n){
+        // split
+        struct Page* page = le2page(list_next(free_list + k), page_link);
+
+        assert(page >= pages);
+
+        page->property = (page + (1 << (k - 1)))->property = (1 << (k - 1));
+        SetPageProperty(page + (1 << (k - 1)));
+
+        list_del(list_next(free_list + k));
+
+        list_add(free_list + (k - 1), &page->page_link);
+        list_add(free_list + (k - 1), &(page + (1 << (k - 1)))->page_link);
+        -- k;
+    }
+    struct Page* page = le2page(list_next(free_list + k), page_link);
+    page->property = 0;
+    ClearPageProperty(page);
+
+    list_del(list_next(free_list + k));
+    nr_free -= 1 << k;
+
+    return page;
+}
+
+static void buddy_free_pages(struct Page* base, size_t n){
+
+    assert(base >= pages);
+    
+    unsigned int k = 0;
+    while((1 << k) < n)
+        ++ k;
+    SetPageProperty(base);
+    ClearPageReserved(base);
+    base->property = 1 << k;
+
+
+    nr_free += 1 << k;
+
+    while(k + 1 < BUDDY_GROUP_N){
+        if(base - pages >= (1 << k) && ((base - pages - (1 << k)) & ((1 << (k + 1)) - 1)) == 0 &&
+            PageProperty(base - (1 << k)) && (base - (1 << k))->property == (1 << k)){
+            // merge with left neighbour
+            struct Page* ne = (base - (1 << k));
+            ne->property = 1 << (k + 1);
+            ClearPageProperty(base);
+            base->property = 0;
+
+            list_del(&ne->page_link);
+
+            base = ne;
+        } else if((base - pages + (1 << k)) < high && ((base - pages + (1 << k)) & ((1 << (k + 1)) - 1)) == 0
+            && PageProperty(base + (1 << k)) && (base + (1 << k))->property == (1 << k)){
+            // merge with right neighbour
+            struct Page* ne = (base + (1 << k));
+            base->property = 1 << (k + 1);
+            ClearPageProperty(ne);
+            ne->property = 0;
+
+            list_del(&ne->page_link);
+        } else // can't merge any more
+            break;
+        ++ k;
+    }
+    list_add(free_list + k, &base->page_link);
+}
+
+static size_t buddy_nr_free_pages(void){
+    return nr_free;
+}
+
+static unsigned int get_total_block_nr(void){
+    unsigned int res = 0;
+    int i;
+    for(i = 0; i < BUDDY_GROUP_N; i ++){
+        list_entry_t* s = free_list + i;
+        while(list_next(s) != free_list + i){
+            s = list_next(s);
+            ++ res;
+        }
+    }
+    return res;
+}
+
+static void buddy_check(void){
+    size_t pre = buddy_nr_free_pages();
+
+    unsigned int nr1 = get_total_block_nr();
+    
+    struct Page* page = buddy_alloc_pages(1);
+    
+    
+    assert(buddy_nr_free_pages() == pre - 1);
+
+    buddy_free_pages(page, 1);
+
+
+    size_t la = buddy_nr_free_pages();
+
+    unsigned int nr2 = get_total_block_nr();
+    
+
+    assert(pre == la);
+    assert(nr1 == nr2);
+
+    page = buddy_alloc_pages(3);
+
+    assert(buddy_nr_free_pages() == pre - 4);
+
+
+    buddy_free_pages(page, 3);
+    la = buddy_nr_free_pages();
+
+    nr2 = get_total_block_nr();
+    assert(pre == la);
+    assert(nr1 == nr2);
+
+    int i;
+    for(i = 1; list_empty(free_list + i); i ++);
+    // cprintf("%d\n", i);
+    page = buddy_alloc_pages(1 << i);
+
+    cprintf("%u, %u\n", nr1, nr2);
+    nr2 = get_total_block_nr();
+
+    assert(buddy_nr_free_pages() == pre - (1 << i));
+
+
+    assert(nr1 == nr2 + 1);
+    buddy_free_pages(page, 1 << i);
+    
+    nr2 = get_total_block_nr();
+    assert(nr1 == nr2);
+}
+
+const struct pmm_manager default_pmm_manager = {
+    .name = "buddy_pmm_manager",
+    .init = buddy_init,
+    .init_memmap = buddy_init_memmap,
+    .alloc_pages = buddy_alloc_pages,
+    .free_pages = buddy_free_pages,
+    .nr_free_pages = buddy_nr_free_pages,
+    .check = buddy_check,
+};
+
