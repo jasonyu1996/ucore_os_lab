@@ -491,6 +491,7 @@ page_remove(pde_t *pgdir, uintptr_t la) {
 //note: PT is changed, so the TLB need to be invalidate 
 int
 page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm) {
+    // map linear address la to page
     pte_t *ptep = get_pte(pgdir, la, 1);
     if (ptep == NULL) {
         return -E_NO_MEM;
@@ -499,14 +500,14 @@ page_insert(pde_t *pgdir, struct Page *page, uintptr_t la, uint32_t perm) {
     if (*ptep & PTE_P) {
         struct Page *p = pte2page(*ptep);
         if (p == page) {
-            page_ref_dec(page);
+            page_ref_dec(page); // counter the effect of page_ref_inc before
         }
         else {
             page_remove_pte(pgdir, la, ptep);
         }
     }
     *ptep = page2pa(page) | PTE_P | perm;
-    tlb_invalidate(pgdir, la);
+    tlb_invalidate(pgdir, la); // force tlb to drop old cache
     return 0;
 }
 
@@ -533,7 +534,7 @@ pgdir_alloc_page(pde_t *pgdir, uintptr_t la, uint32_t perm) {
         if (swap_init_ok){
             swap_map_swappable(check_mm_struct, la, page, 0);
             page->pra_vaddr=la;
-            assert(page_ref(page) == 1);
+            assert(page_ref(page) == 1); // because this is a newly allocated page. Only la maps to it.
             //cprintf("get No. %d  page: pra_vaddr %x, pra_link.prev %x, pra_link_next %x in pgdir_alloc_page\n", (page-pages), page->pra_vaddr,page->pra_page_link.prev, page->pra_page_link.next);
         }
 

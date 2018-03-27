@@ -122,6 +122,9 @@ insert_vma_struct(struct mm_struct *mm, struct vma_struct *vma) {
             le_prev = le;
         }
 
+    // find the right position to insert vma at
+    // in order to keep the ascending order of the address
+
     le_next = list_next(le_prev);
 
     /* check overlap */
@@ -342,7 +345,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     if (vma->vm_flags & VM_WRITE) {
         perm |= PTE_W;
     }
-    addr = ROUNDDOWN(addr, PGSIZE);
+    addr = ROUNDDOWN(addr, PGSIZE); // the address of the (virtual) page
 
     ret = -E_NO_MEM;
 
@@ -366,7 +369,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     */
 
     ptep = get_pte(mm->pgdir, addr, 1);
-    if(*ptep == 0){
+    if(*ptep == 0){ // not mapped, create a new page
         pgdir_alloc_page(mm->pgdir, addr, perm);
         // page->ref = 1;
         // uint32_t pa = page2pa(page);
@@ -374,6 +377,7 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     } else{ // in this case, the page is expected in the disc
         // we need to swap in the page from the disc
         // struct Page* page = pa2page(PTE_ADDR(*ptep));
+
 
         if(swap_init_ok){
             struct Page* page;

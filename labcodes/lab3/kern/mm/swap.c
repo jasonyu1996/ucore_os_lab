@@ -96,6 +96,7 @@ swap_out(struct mm_struct *mm, int n, int in_tick)
 
           //cprintf("SWAP: choose victim page 0x%08x\n", page);
           
+          // modify the pte of victim page. Set the present bit to 0.
           v=page->pra_vaddr; 
           pte_t *ptep = get_pte(mm->pgdir, v, 0);
           assert((*ptep & PTE_P) != 0);
@@ -119,7 +120,7 @@ swap_out(struct mm_struct *mm, int n, int in_tick)
 int
 swap_in(struct mm_struct *mm, uintptr_t addr, struct Page **ptr_result)
 {
-     struct Page *result = alloc_page();
+     struct Page *result = alloc_page(); // some page will possibly be swapped out in this process
      assert(result!=NULL);
 
      pte_t *ptep = get_pte(mm->pgdir, addr, 0);
