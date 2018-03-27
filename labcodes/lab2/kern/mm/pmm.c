@@ -219,6 +219,8 @@ page_init(void) {
             }
         }
     }
+    // find the highest usable address
+
     if (maxpa > KMEMSIZE) {
         maxpa = KMEMSIZE;
     }
@@ -227,6 +229,8 @@ page_init(void) {
 
     npage = maxpa / PGSIZE;
     pages = (struct Page *)ROUNDUP((void *)end, PGSIZE);
+
+    // stored following the end of the section
 
     for (i = 0; i < npage; i ++) {
         SetPageReserved(pages + i);
@@ -237,6 +241,7 @@ page_init(void) {
     for (i = 0; i < memmap->nr_map; i ++) {
         uint64_t begin = memmap->map[i].addr, end = begin + memmap->map[i].size;
         if (memmap->map[i].type == E820_ARM) {
+            // available memory to OS
             if (begin < freemem) {
                 begin = freemem;
             }
@@ -332,11 +337,16 @@ pmm_init(void) {
     //But shouldn't use this map until enable_paging() & gdt_init() finished.
     boot_map_segment(boot_pgdir, KERNBASE, KMEMSIZE, 0, PTE_W);
 
+
+    // cprintf("HJA\n");
     //temporary map: 
     //virtual_addr 3G~3G+4M = linear_addr 0~4M = linear_addr 3G~3G+4M = phy_addr 0~4M     
-    boot_pgdir[0] = boot_pgdir[PDX(KERNBASE)];
+    boot_pgdir[0] = boot_pgdir[PDX(KERNBASE)]; // necessary or after paging is enabled linear addr
+    // 0~4M (virtual addr 3G~3G+4M) would not be mapped to phy_addr 0~4M
 
     enable_paging();
+
+    // boot_pgdir in 3G~3G+4M, so it can still be accessed
 
     //reload gdt(third time,the last time) to map all physical memory
     //virtual_addr 0~4G=liear_addr 0~4G
@@ -345,6 +355,7 @@ pmm_init(void) {
 
     //disable the map of virtual_addr 0~4M
     boot_pgdir[0] = 0;
+    // now virtual address 3G~3G+4M = linear_addr 3G~3G+4M = phy_addr 0~4M
 
     //now the basic virtual memory map(see memalyout.h) is established.
     //check the correctness of the basic virtual memory map.
