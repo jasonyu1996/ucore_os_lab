@@ -198,7 +198,7 @@ $(call create_target,ucore.img)
 SWAPIMG		:= $(call totarget,swap.img)
 
 $(SWAPIMG):
-	$(V)dd if=/dev/zero of=$@ bs=1m count=128
+	$(V)dd if=/dev/zero of=$@ bs=1M count=128
 
 $(call create_target,swap.img)
 
