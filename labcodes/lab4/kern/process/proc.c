@@ -370,6 +370,8 @@ proc_init(void) {
 
     current = idleproc;
 
+    // idleproc actually corresponds to the current execution stream
+
     int pid = kernel_thread(init_main, "Hello world!!", 0);
     if (pid <= 0) {
         panic("create init_main failed.\n");
