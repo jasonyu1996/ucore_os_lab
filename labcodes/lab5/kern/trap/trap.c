@@ -315,12 +315,12 @@ trap(struct trapframe *tf) {
     else {
         // keep a trapframe chain in stack
         struct trapframe *otf = current->tf;
-        current->tf = tf;
+        current->tf = tf; // interesting
     
         bool in_kernel = trap_in_kernel(tf);
     
         trap_dispatch(tf);
-    
+     
         current->tf = otf;
         if (!in_kernel) {
             if (current->flags & PF_EXITING) {

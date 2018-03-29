@@ -5,7 +5,7 @@
 
 void
 exit(int error_code) {
-    sys_exit(error_code);
+    sys_exit(error_code); // not expected to return
     cprintf("BUG: exit failed.\n");
     while (1);
 }

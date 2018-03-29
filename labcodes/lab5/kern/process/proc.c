@@ -837,7 +837,6 @@ init_main(void *arg) {
     }
 
     while (do_wait(0, NULL) == 0) {
-        cprintf("OOOOOO\n");
         schedule();
     }
 
