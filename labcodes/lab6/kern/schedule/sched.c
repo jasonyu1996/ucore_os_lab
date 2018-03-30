@@ -37,7 +37,8 @@ sched_class_proc_tick(struct proc_struct *proc) {
     }
     else {
         // cprintf("NEED RESCHEDULE! %d\n", proc == idleproc);
-        proc->need_resched = 1;
+        proc->need_resched = 1; // we do not need to wait for a time slice to end, 
+            // since idle_proc does nothing
     }
 }
 
