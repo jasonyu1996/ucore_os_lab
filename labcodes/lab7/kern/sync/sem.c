@@ -41,10 +41,12 @@ static __noinline uint32_t __down(semaphore_t *sem, uint32_t wait_state) {
     wait_current_set(&(sem->wait_queue), wait, wait_state);
     local_intr_restore(intr_flag);
 
-    schedule();
+    schedule(); // hand out the control
+    
 
     local_intr_save(intr_flag);
-    wait_current_del(&(sem->wait_queue), wait);
+    wait_current_del(&(sem->wait_queue), wait); // is this for the situation where the waiting process is interrupted
+    // by other events?
     local_intr_restore(intr_flag);
 
     if (wait->wakeup_flags != wait_state) {

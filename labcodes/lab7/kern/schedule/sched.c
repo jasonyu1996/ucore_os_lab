@@ -99,6 +99,8 @@ schedule(void) {
     local_intr_restore(intr_flag);
 }
 
+
+// timer->expires are maintained in a differential form
 // add timer to timer_list
 void
 add_timer(timer_t *timer) {
@@ -157,7 +159,7 @@ run_timer_list(void) {
                 le = list_next(le);
                 struct proc_struct *proc = timer->proc;
                 if (proc->wait_state != 0) {
-                    assert(proc->wait_state & WT_INTERRUPTED);
+                    assert(proc->wait_state & WT_INTERRUPTED); // wait state could be interrupted (timer)
                 }
                 else {
                     warn("process %d's wait_state == 0.\n", proc->pid);
