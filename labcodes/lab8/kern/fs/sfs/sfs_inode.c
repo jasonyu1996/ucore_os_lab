@@ -85,15 +85,19 @@ sfs_block_inuse(struct sfs_fs *sfs, uint32_t ino) {
 
 /*
  * sfs_block_alloc -  check and get a free disk block
+ * For the Simple File System sfs
  */
 static int
 sfs_block_alloc(struct sfs_fs *sfs, uint32_t *ino_store) {
+    // ino_store is used to store the index of the free block found
     int ret;
     if ((ret = bitmap_alloc(sfs->freemap, ino_store)) != 0) {
-        return ret;
+        return ret; // unsuccessful
     }
+    // successful
+    // mark the block as used
     assert(sfs->super.unused_blocks > 0);
-    sfs->super.unused_blocks --, sfs->super_dirty = 1;
+    sfs->super.unused_blocks --, sfs->super_dirty = 1; // superblock is now changed
     assert(sfs_block_inuse(sfs, *ino_store));
     return sfs_clear_block(sfs, *ino_store, 1);
 }
@@ -115,8 +119,10 @@ static int
 sfs_create_inode(struct sfs_fs *sfs, struct sfs_disk_inode *din, uint32_t ino, struct inode **node_store) {
     struct inode *node;
     if ((node = alloc_inode(sfs_inode)) != NULL) {
-        vop_init(node, sfs_get_ops(din->type), info2fs(sfs, sfs));
-        struct sfs_inode *sin = vop_info(node, sfs_inode);
+        vop_init(node, sfs_get_ops(din->type), info2fs(sfs, sfs)); // here info2fs gets fs from sfs_fs
+        struct sfs_inode *sin = vop_info(node, sfs_inode); // the concrete information stored in the inode
+        
+        // initialize sfs_inode
         sin->din = din, sin->ino = ino, sin->dirty = 0, sin->reclaim_count = 1;
         sem_init(&(sin->sem), 1);
         *node_store = node;
@@ -132,6 +138,10 @@ sfs_create_inode(struct sfs_fs *sfs, struct sfs_disk_inode *din, uint32_t ino, s
  */
 static struct inode *
 lookup_sfs_nolock(struct sfs_fs *sfs, uint32_t ino) {
+
+    // given the block number, return the corresponding inode?
+    // the mapping from block number to inode is achieved via the hash list in sfs_fs
+    
     struct inode *node;
     list_entry_t *list = sfs_hash_list(sfs, ino), *le = list;
     while ((le = list_next(le)) != list) {
@@ -155,12 +165,15 @@ int
 sfs_load_inode(struct sfs_fs *sfs, struct inode **node_store, uint32_t ino) {
     lock_sfs_fs(sfs);
     struct inode *node;
+
+    // checks if it already exists
     if ((node = lookup_sfs_nolock(sfs, ino)) != NULL) {
-        goto out_unlock;
+        goto out_unlock; // if so, directly returns
     }
 
     int ret = -E_NO_MEM;
     struct sfs_disk_inode *din;
+    // allocate the on-disc inode in memory
     if ((din = kmalloc(sizeof(struct sfs_disk_inode))) == NULL) {
         goto failed_unlock;
     }
@@ -168,6 +181,7 @@ sfs_load_inode(struct sfs_fs *sfs, struct inode **node_store, uint32_t ino) {
     assert(sfs_block_inuse(sfs, ino));
     if ((ret = sfs_rbuf(sfs, din, sizeof(struct sfs_disk_inode), ino, 0)) != 0) {
         goto failed_cleanup_din;
+        // if not on disc?
     }
 
     assert(din->nlinks != 0);
@@ -197,6 +211,8 @@ failed_unlock:
  * @create:   BOOL, if the block isn't allocated, if create = 1 the alloc a block,  otherwise just do nothing
  * @ino_store: 0 OR the index of already inused block or new allocated block.
  */
+
+// find in secondary block index table
 static int
 sfs_bmap_get_sub_nolock(struct sfs_fs *sfs, uint32_t *entp, uint32_t index, bool create, uint32_t *ino_store) {
     assert(index < SFS_BLK_NENTRY);
@@ -205,26 +221,33 @@ sfs_bmap_get_sub_nolock(struct sfs_fs *sfs, uint32_t *entp, uint32_t index, bool
     off_t offset = index * sizeof(uint32_t);  // the offset of entry in entry block
 	// if entry block is existd, read the content of entry block into  sfs->sfs_buffer
     if ((ent = *entp) != 0) {
-        if ((ret = sfs_rbuf(sfs, &ino, sizeof(uint32_t), ent, offset)) != 0) {
-            return ret;
+        if ((ret = sfs_rbuf(sfs, &ino, sizeof(uint32_t), ent, offset)) != 0) { // read the disc
+            // to find out the index of the block
+            return ret; // failed
         }
         if (ino != 0 || !create) {
-            goto out;
+            goto out; // found or not allowed to create
         }
     }
-    else {
+    else { // the secondary table does not exist
         if (!create) {
             goto out;
         }
 		//if entry block isn't existd, allocated a entry block (for indrect block)
         if ((ret = sfs_block_alloc(sfs, &ent)) != 0) {
-            return ret;
+            // note here that the change in ent (secondary index does) is not instantly
+            // written to the disc (see sfs_bmap_get_nolock)
+
+            return ret; // failure?
         }
     }
     
+    // create a new block
     if ((ret = sfs_block_alloc(sfs, &ino)) != 0) {
         goto failed_cleanup;
     }
+
+    // write back the index of the secondary table
     if ((ret = sfs_wbuf(sfs, &ino, sizeof(uint32_t), ent, offset)) != 0) {
         sfs_block_free(sfs, ino);
         goto failed_cleanup;
@@ -232,7 +255,7 @@ sfs_bmap_get_sub_nolock(struct sfs_fs *sfs, uint32_t *entp, uint32_t index, bool
 
 out:
     if (ent != *entp) {
-        *entp = ent;
+        *entp = ent; // secondary index changed
     }
     *ino_store = ino;
     return 0;
@@ -253,6 +276,9 @@ failed_cleanup:
  * @create:   BOOL, if the block isn't allocated, if create = 1 the alloc a block,  otherwise just do nothing
  * @ino_store: 0 OR the index of already inused block or new allocated block.
  */
+
+
+// given the index of a block in the sfs_inode, return the block number
 static int
 sfs_bmap_get_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, uint32_t index, bool create, uint32_t *ino_store) {
     struct sfs_disk_inode *din = sin->din;
@@ -276,10 +302,10 @@ sfs_bmap_get_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, uint32_t index, b
         if ((ret = sfs_bmap_get_sub_nolock(sfs, &ent, index, create, &ino)) != 0) {
             return ret;
         }
-        if (ent != din->indirect) {
+        if (ent != din->indirect) { // the block index of the secondary table has changed
             assert(din->indirect == 0);
             din->indirect = ent;
-            sin->dirty = 1;
+            sin->dirty = 1 // therefore, dirty
         }
         goto out;
     } else {
@@ -294,6 +320,7 @@ out:
 /*
  * sfs_bmap_free_sub_nolock - set the entry item to 0 (free) in the indirect block
  */
+
 static int
 sfs_bmap_free_sub_nolock(struct sfs_fs *sfs, uint32_t ent, uint32_t index) {
     assert(sfs_block_inuse(sfs, ent) && index < SFS_BLK_NENTRY);
@@ -356,13 +383,16 @@ sfs_bmap_load_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, uint32_t index, 
     assert(index <= din->blocks);
     int ret;
     uint32_t ino;
-    bool create = (index == din->blocks);
+    bool create = (index == din->blocks); // append to the end?
+    // note that it is not allowed to leave holes among blocks
     if ((ret = sfs_bmap_get_nolock(sfs, sin, index, create, &ino)) != 0) {
         return ret;
     }
     assert(sfs_block_inuse(sfs, ino));
     if (create) {
         din->blocks ++;
+        // why no setting dirty to 1?
+        // TODO
     }
     if (ino_store != NULL) {
         *ino_store = ino;
@@ -392,6 +422,9 @@ sfs_bmap_truncate_nolock(struct sfs_fs *sfs, struct sfs_inode *sin) {
  * @sin:      sfs inode in memory
  * @slot:     the index of file entry
  * @entry:    file entry
+ * 
+ * Why change the name from index to slot?
+ * Okay. So this is for directory. Then slot is just the index of file (rather than index of block).
  */
 static int
 sfs_dirent_read_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, int slot, struct sfs_disk_entry *entry) {

@@ -45,6 +45,7 @@ struct sfs_super {
 };
 
 /* inode (on disk) */
+// that is, this inode would be put on disk
 struct sfs_disk_inode {
     uint32_t size;                                  /* size of the file (in bytes) */
     uint16_t type;                                  /* one of SYS_TYPE_* above */

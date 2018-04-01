@@ -35,9 +35,10 @@ files_create(void) {
     //cprintf("[files_create]\n");
     static_assert((int)FILES_STRUCT_NENTRY > 128);
     struct files_struct *filesp;
+    // note here that the memory allocated is more than the size of file_struct (to make room for fd_array)
     if ((filesp = kmalloc(sizeof(struct files_struct) + FILES_STRUCT_BUFSIZE)) != NULL) {
         filesp->pwd = NULL;
-        filesp->fd_array = (void *)(filesp + 1);
+        filesp->fd_array = (void *)(filesp + 1); // somewhat interesting
         filesp->files_count = 0;
         sem_init(&(filesp->files_sem), 1);
         fd_array_init(filesp->fd_array);
@@ -50,7 +51,7 @@ files_destroy(struct files_struct *filesp) {
 //    cprintf("[files_destroy]\n");
     assert(filesp != NULL && files_count(filesp) == 0);
     if (filesp->pwd != NULL) {
-        vop_ref_dec(filesp->pwd);
+        vop_ref_dec(filesp->pwd); // one fewer references to the directory
     }
     int i;
     struct file *file = filesp->fd_array;
@@ -69,7 +70,8 @@ files_closeall(struct files_struct *filesp) {
     assert(filesp != NULL && files_count(filesp) > 0);
     int i;
     struct file *file = filesp->fd_array;
-    //skip the stdin & stdout
+    //skip the stdin & stdout (that is why files_destroy does not invoke
+    // files_closeall to close the files
     for (i = 2, file += 2; i < FILES_STRUCT_NENTRY; i ++, file ++) {
         if (file->status == FD_OPENED) {
             fd_array_close(file);
@@ -77,6 +79,8 @@ files_closeall(struct files_struct *filesp) {
     }
 }
 
+
+// duplicate files
 int
 dup_files(struct files_struct *to, struct files_struct *from) {
 //    cprintf("[dup_fs]\n");

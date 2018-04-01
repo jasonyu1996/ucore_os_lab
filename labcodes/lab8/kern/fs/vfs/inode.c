@@ -29,7 +29,7 @@ inode_init(struct inode *node, const struct inode_ops *ops, struct fs *fs) {
     node->ref_count = 0;
     node->open_count = 0;
     node->in_ops = ops, node->in_fs = fs;
-    vop_ref_inc(node);
+    vop_ref_inc(node); // why?
 }
 
 /* *

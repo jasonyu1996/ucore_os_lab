@@ -19,6 +19,8 @@ struct device {
     int (*d_ioctl)(struct device *dev, int op, void *data);
 };
 
+// here the dev pointer is just like the self reference in Python
+
 #define dop_open(dev, open_flags)           ((dev)->d_open(dev, open_flags))
 #define dop_close(dev)                      ((dev)->d_close(dev))
 #define dop_io(dev, iob, write)             ((dev)->d_io(dev, iob, write))

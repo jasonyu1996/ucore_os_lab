@@ -68,7 +68,7 @@ fd_array_free(struct file *file) {
     assert(file->status == FD_INIT || file->status == FD_CLOSED);
     assert(fopen_count(file) == 0);
     if (file->status == FD_CLOSED) {
-        vfs_close(file->node);
+        vfs_close(file->node); // to the vfs layer
     }
     file->status = FD_NONE;
 }
@@ -117,9 +117,9 @@ fd_array_dup(struct file *to, struct file *from) {
     to->readable = from->readable;
     to->writable = from->writable;
     struct inode *node = from->node;
-    vop_ref_inc(node), vop_open_inc(node);
+    vop_ref_inc(node), vop_open_inc(node); // into vfs
     to->node = node;
-    fd_array_open(to);
+    fd_array_open(to); // tag the file opened
 }
 
 // fd2file - use fd as index of fd_array, return the array item (file)
