@@ -2,6 +2,7 @@ PROJ	:= 8
 EMPTY	:=
 SPACE	:= $(EMPTY) $(EMPTY)
 SLASH	:= /
+GCCPREFIX	:= "i386-elf-"
 
 V       := @
 #need llvm/cang-3.5+

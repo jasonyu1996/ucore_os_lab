@@ -99,6 +99,9 @@ schedule(void) {
     local_intr_restore(intr_flag);
 }
 
+
+// timer->expires are maintained in a differential form
+// add timer to timer_list
 void
 add_timer(timer_t *timer) {
     bool intr_flag;

@@ -112,16 +112,12 @@ alloc_proc(void) {
      *       uint32_t wait_state;                        // waiting state
      *       struct proc_struct *cptr, *yptr, *optr;     // relations between processes
 	 */
-     //LAB6 YOUR CODE : (update LAB5 steps)
-    /*
-     * below fields(add in LAB6) in proc_struct need to be initialized
-     *     struct run_queue *rq;                       // running queue contains Process
-     *     list_entry_t run_link;                      // the entry linked in run queue
-     *     int time_slice;                             // time slice for occupying the CPU
-     *     skew_heap_entry_t lab6_run_pool;            // FOR LAB6 ONLY: the entry in the run pool
-     *     uint32_t lab6_stride;                       // FOR LAB6 ONLY: the current stride of the process
-     *     uint32_t lab6_priority;                     // FOR LAB6 ONLY: the priority of process, set by lab6_set_priority(uint32_t)
-     */
+        memset(proc, 0, sizeof(struct proc_struct));
+        proc->state = PROC_UNINIT;
+        proc->parent = current;
+        proc->cr3 = boot_cr3;
+        list_init(&proc->run_link);
+        skew_heap_init(&proc->lab6_run_pool);
     //LAB8:EXERCISE2 YOUR CODE HINT:need add some code to init fs in proc_struct, ...
     }
     return proc;
@@ -427,8 +423,28 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
         goto fork_out;
     }
     ret = -E_NO_MEM;
-    //LAB4:EXERCISE2 YOUR CODE
+
+    proc = alloc_proc();
+
+    proc->pid = get_pid();    
+    set_links(proc);
+    hash_proc(proc);
+    
+
+    // list_add(&proc_list, &proc->list_link); // adding to list has been attributed to set_links
+    // ++ nr_process;
+
+    // proc->kstack = stack;
+    if(setup_kstack(proc)){
+        goto bad_fork_cleanup_proc;
+    }
+
+    copy_mm(clone_flags, proc);
+    copy_thread(proc, stack, tf);
+
     //LAB8:EXERCISE2 YOUR CODE  HINT:how to copy the fs in parent's proc_struct?
+    //LAB4:EXERCISE2 YOUR CODE
+    
     /*
      * Some Useful MACROs, Functions and DEFINEs, you can use them in below implementation.
      * MACROs or Functions:
@@ -461,6 +477,13 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
 	*    update step 1: set child proc's parent to current process, make sure current process's wait_state is 0
 	*    update step 5: insert proc_struct into hash_list && proc_list, set the relation links of process
     */
+    assert(current->wait_state == 0);
+
+    wakeup_proc(proc);
+
+    ret = proc->pid;
+
+    
 	
 fork_out:
     return ret;

@@ -16,6 +16,7 @@
 #include <sched.h>
 #include <sync.h>
 #include <proc.h>
+#include <sched.h>
 
 #define TICK_NUM 100
 
@@ -34,7 +35,7 @@ static void print_ticks() {
  * be represented in relocation records.
  * */
 static struct gatedesc idt[256] = {{0}};
-
+extern uintptr_t __vectors[];
 static struct pseudodesc idt_pd = {
     sizeof(idt) - 1, (uintptr_t)idt
 };
@@ -54,9 +55,14 @@ idt_init(void) {
       *     You don't know the meaning of this instruction? just google it! and check the libs/x86.h to know more.
       *     Notice: the argument of lidt is idt_pd. try to find it!
       */
-     /* LAB5 YOUR CODE */ 
-     //you should update your lab1 code (just add ONE or TWO lines of code), let user app to use syscall to get the service of ucore
-     //so you should setup the syscall interrupt gate in here
+    int i;
+	for(i = 0; i < 256; i ++){
+		SETGATE(idt[i], i == T_SYSCALL || i == T_SWITCH_TOK ||
+            i == T_SWITCH_TOU, GD_KTEXT, __vectors[i], (i == T_SYSCALL
+             || i == T_SWITCH_TOK) ? 3 : 0);
+	}
+
+	lidt(&idt_pd);
 }
 
 static const char *
@@ -182,6 +188,7 @@ pgfault_handler(struct trapframe *tf) {
 
 static volatile int in_swap_tick_event = 0;
 extern struct mm_struct *check_mm_struct;
+static struct trapframe tf_n, *tf_p;
 
 static void
 trap_dispatch(struct trapframe *tf) {
@@ -234,6 +241,10 @@ trap_dispatch(struct trapframe *tf) {
          * IMPORTANT FUNCTIONS:
 	     * run_timer_list
          */
+        ++ ticks;
+        run_timer_list();
+        // sched_class_proc_tick(current);
+        
         break;
     case IRQ_OFFSET + IRQ_COM1:
     case IRQ_OFFSET + IRQ_KBD:
@@ -246,6 +257,18 @@ trap_dispatch(struct trapframe *tf) {
         break;
     //LAB1 CHALLENGE 1 : YOUR CODE you should modify below codes.
     case T_SWITCH_TOU:
+        // switch to user mode
+        if(tf->tf_cs != USER_CS){
+            asm volatile (
+                "addl 8, %esp;"
+            );
+            
+
+            tf->tf_cs = USER_CS;
+            tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
+            tf->tf_eflags |= 0x3000;
+        }
+        break;
     case T_SWITCH_TOK:
         panic("T_SWITCH_** ??\n");
         break;
