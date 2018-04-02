@@ -305,7 +305,7 @@ sfs_bmap_get_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, uint32_t index, b
         if (ent != din->indirect) { // the block index of the secondary table has changed
             assert(din->indirect == 0);
             din->indirect = ent;
-            sin->dirty = 1 // therefore, dirty
+            sin->dirty = 1; // therefore, dirty
         }
         goto out;
     } else {
@@ -371,7 +371,7 @@ sfs_bmap_free_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, uint32_t index) 
 }
 
 /*
- * sfs_bmap_load_nolock - according to the DIR's inode and the logical index of block in inode, find the NO. of disk block.
+ * sfs_bmap_load_nolock - according to the inode and the logical index of block in inode, find the NO. of disk block.
  * @sfs:      sfs file system
  * @sin:      sfs inode in memory
  * @index:    the logical index of disk block in inode
@@ -483,14 +483,14 @@ sfs_dirent_search_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, const char *
     set_pvalue(empty_slot, nslots);
     for (i = 0; i < nslots; i ++) {
         if ((ret = sfs_dirent_read_nolock(sfs, sin, i, entry)) != 0) {
-            goto out;
+            goto out; // failed to get the ith file entry
         }
-        if (entry->ino == 0) {
+        if (entry->ino == 0) { // empty entry ?
             set_pvalue(empty_slot, i);
             continue ;
         }
         if (strcmp(name, entry->name) == 0) {
-            set_pvalue(slot, i);
+            set_pvalue(slot, i); // found
             set_pvalue(ino_store, entry->ino);
             goto out;
         }
@@ -587,6 +587,8 @@ sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset
     struct sfs_disk_inode *din = sin->din;
     assert(din->type != SFS_TYPE_DIR);
     off_t endpos = offset + *alenp, blkoff;
+
+    // cprintf("DD: %d\n", *alenp);
     *alenp = 0;
 	// calculate the Rd/Wr end position
     if (offset < 0 || offset >= SFS_MAX_FILE_SIZE || offset > endpos) {
@@ -632,9 +634,37 @@ sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset
      * (3) If end position isn't aligned with the last block, Rd/Wr some content from begin to the (endpos % SFS_BLKSIZE) of the last block
 	 *       NOTICE: useful function: sfs_bmap_load_nolock, sfs_buf_op	
 	*/
+    uint32_t cur_blk;
+    // cprintf("BLOCK %d\n", blkno);
+    for(cur_blk = blkno; cur_blk <= blkno + nblks; ++ cur_blk){
+        ret = sfs_bmap_load_nolock(sfs, sin, cur_blk, &ino);
+        // cprintf("INODE FETCHED (%d) -> %d @ %0x8\n", cur_blk, ino, buf + alen);
+        if(ret != 0)
+            goto out; // failed to fetch the block no
+
+        if(cur_blk == blkno){
+            size = (nblks == 0) ? (endpos - offset) : (SFS_BLKSIZE - offset % SFS_BLKSIZE);
+            ret = sfs_buf_op(sfs, buf + alen, size, ino, offset % SFS_BLKSIZE);
+        } else if(cur_blk == blkno + nblks){
+            // the last block (and not the first)
+            size = endpos % SFS_BLKSIZE;
+            ret = sfs_buf_op(sfs, buf + alen, size, ino, 0);
+
+        } else{
+            size = SFS_BLKSIZE;
+            ret = sfs_block_op(sfs, buf + alen, ino, 1); // I don't think it is possible to
+            // operate on multiple blocks at the same time
+        }
+        if(ret != 0)
+            goto out;
+        alen += size;
+    }
+
+    // cprintf("OP: %d %d\n", alen, *alenp);
+
 out:
     *alenp = alen;
-    if (offset + alen > sin->din->size) {
+    if (offset + alen > sin->din->size) { // some data appended to the tail
         sin->din->size = offset + alen;
         sin->dirty = 1;
     }

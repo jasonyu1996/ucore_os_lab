@@ -81,11 +81,14 @@ sysfile_read(int fd, void *base, size_t len) {
         if (alen != 0) {
             lock_mm(mm);
             {
+                // cprintf("\tCopy %08x\n", base);
+                
                 if (copy_to_user(mm, base, buffer, alen)) {
                     assert(len >= alen);
                     base += alen, len -= alen, copied += alen;
                 }
                 else if (ret == 0) {
+                    // cprintf("FAILED!\n");
                     ret = -E_INVAL;
                 }
             }

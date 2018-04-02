@@ -612,6 +612,7 @@ load_icode(int fd, int argc, char **kargv) {
      * (7) setup trapframe for user environment
      * (8) if up steps failed, you should cleanup the env.
      */
+
     assert(argc >= 0 && argc <= EXEC_MAX_ARG_NUM);
 
     if (current->mm != NULL) {
@@ -630,6 +631,9 @@ load_icode(int fd, int argc, char **kargv) {
     struct Page *page;
 
     struct elfhdr __elf, *elf = &__elf;
+
+    cprintf("------%08x\n", elf);
+    
     if ((ret = load_icode_read(fd, elf, sizeof(struct elfhdr), 0)) != 0) {
         goto bad_elf_cleanup_pgdir;
     }

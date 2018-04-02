@@ -85,6 +85,9 @@ int
 dup_files(struct files_struct *to, struct files_struct *from) {
 //    cprintf("[dup_fs]\n");
     assert(to != NULL && from != NULL);
+
+    // cprintf("Counts: %d, %d\n", files_count(to), files_count(from));
+
     assert(files_count(to) == 0 && files_count(from) > 0);
     if ((to->pwd = from->pwd) != NULL) {
         vop_ref_inc(to->pwd);

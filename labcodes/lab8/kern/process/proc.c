@@ -442,7 +442,21 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     copy_mm(clone_flags, proc);
     copy_thread(proc, stack, tf);
 
+
     //LAB8:EXERCISE2 YOUR CODE  HINT:how to copy the fs in parent's proc_struct?
+
+    // ------- copy the fs struct
+
+    if(current->filesp != NULL){
+        proc->filesp = files_create();
+        ret = dup_files(proc->filesp, current->filesp);
+        
+        files_count_inc(proc->filesp);
+        if(ret != 0)
+            goto bad_fork_cleanup_fs; // failed to duplicate the files
+    } else
+        current->filesp = NULL;
+
     //LAB4:EXERCISE2 YOUR CODE
     
     /*
@@ -596,6 +610,164 @@ load_icode(int fd, int argc, char **kargv) {
      * (7) setup trapframe for user environment
      * (8) if up steps failed, you should cleanup the env.
      */
+
+    if(current->mm != NULL)
+        return -1;
+
+    struct mm_struct* mm = mm_create();
+    if(setup_pgdir(mm) != 0)
+        goto mm_failed;
+
+    // read the header
+    struct elfhdr header;
+
+    // cprintf("HEADER is at %08x\n", &header);
+    // cprintf("Before loading: %08x\n", header.e_magic);
+
+    load_icode_read(fd, &header, sizeof(struct elfhdr), 0);
+    
+    // cprintf("%08x\n", header.e_magic);
+
+    if(header.e_magic != ELF_MAGIC) // not a valid elf
+        return -1;
+
+    // cprintf("I have read the ELF header!!!!\n");
+
+    // read the program headers
+    struct proghdr* pheaders = kmalloc(sizeof(struct proghdr) * header.e_phnum);
+
+    load_icode_read(fd, pheaders, sizeof(struct proghdr) * header.e_phnum, 
+        header.e_phoff);
+    
+    struct proghdr* cph;
+
+    for(cph = pheaders; cph < pheaders + header.e_phnum; ++ cph){
+        // cprintf("START!\n");
+        // translate the ELF program flags to vm flags
+        uint32_t vm_flags = 0;
+        if(cph->p_flags & 1)
+            vm_flags |= VM_EXEC;
+        if(cph->p_flags & 2)
+            vm_flags |= VM_WRITE;
+        if(cph->p_flags & 4)
+            vm_flags |= VM_READ;
+    
+        mm_map(mm, cph->p_va, cph->p_memsz, vm_flags, NULL);
+
+        uint32_t perm = PTE_U;
+        if(vm_flags & VM_WRITE)
+            perm |= PTE_W;
+        
+        // load the data in the segment
+        uint32_t cp = cph->p_va;
+        uint32_t ep = cp + cph->p_filesz - 1;
+        uint32_t len;
+
+        uint32_t cpage = cp / PGSIZE, epage = ep / PGSIZE, cur_page, cur_la, cur_fo;
+        for(cur_page = cpage, cur_la = cpage * PGSIZE, cur_fo = cph->p_offset;
+             cur_page <= epage; 
+            ++ cur_page, cur_la += PGSIZE, cur_fo += len){
+
+            struct Page* pg = pgdir_alloc_page(mm->pgdir, cur_la, perm);
+            void *va = page2kva(pg);
+
+            uint32_t os;
+            if(cur_page == cpage){
+                os = cph->p_va % PGSIZE;
+                len = (cur_page == epage) ? cph->p_filesz : PGSIZE - (cph->p_va % PGSIZE);
+            } else if(cur_page == epage){
+                os = 0;
+                len = ep % PGSIZE + 1;
+            } else{
+                os = 0;
+                len = PGSIZE;
+            }
+            load_icode_read(fd, va + os, len, cur_fo);
+        }
+
+        // cprintf("DONE!\n");
+        
+        // BSS
+        uint32_t mp = cp + cph->p_memsz - 1;
+        uint32_t mpage = mp / PGSIZE;
+        for(cur_page = epage, cur_la = epage * PGSIZE; cur_page <= mpage; ++ cur_page, cur_la += PGSIZE){
+            uint32_t os;
+            struct Page* pg;
+            if(cur_page == epage){
+                pg = get_page(mm->pgdir, cur_la, NULL);
+                os = ep % PGSIZE + 1;
+            } else{
+                pg = pgdir_alloc_page(mm->pgdir, cur_la, perm);
+                os = 0;
+            }
+            void *va = page2kva(pg);
+            len = (cur_page == mpage) ? (mp % PGSIZE - os + 1) : (PGSIZE - os);
+            // cprintf("%08x %08x, %08x\n", cur_la + os, len, mp);
+            memset(va + os, 0, len);
+        }
+    }
+
+    // cprintf("GOOD\n");
+
+    // user stack
+    mm_map(mm, USTACKTOP - USTACKSIZE, USTACKSIZE, VM_READ | VM_WRITE | VM_STACK
+        , NULL);
+
+    assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-PGSIZE , PTE_USER) != NULL);
+    assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-2*PGSIZE , PTE_USER) != NULL);
+    assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-3*PGSIZE , PTE_USER) != NULL);
+    assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-4*PGSIZE , PTE_USER) != NULL);
+    
+    // cprintf("%08x\n", header.e_entry);
+    
+    lcr3(PADDR(mm->pgdir));
+
+    
+    // setup the args
+    int arg_totlen = 0;
+    int i;
+    for(i = 0; i < argc; i ++)
+        arg_totlen += strnlen(kargv[i], EXEC_MAX_ARG_LEN + 1) + 1; // +1 for '\0'
+    
+    void* stackp = USTACKTOP - (arg_totlen / sizeof(long) + 1) * sizeof(long); // for alignment ?
+    void* cstackp = stackp;
+    uint32_t* refstackp = stackp - argc * sizeof(uint32_t);
+    for(i = 0; i < argc; i ++, refstackp ++){
+        strcpy(cstackp, kargv[i]);
+
+        *refstackp = (uint32_t)cstackp;
+
+        cstackp += strnlen(kargv[i], EXEC_MAX_ARG_LEN + 1) + 1;
+    }
+
+    stackp = refstackp - argc - 1;
+    *(uint32_t*)stackp = argc;
+
+    
+    struct trapframe *tf = current->tf;
+    memset(tf, 0, sizeof(struct trapframe));
+    tf->tf_cs = USER_CS;
+    tf->tf_ds = tf->tf_es = tf->tf_ss = USER_DS;
+    tf->tf_esp = (uint32_t)stackp;
+    tf->tf_eip = header.e_entry;
+    tf->tf_eflags |= FL_IF;
+    
+    current->mm = mm;
+    mm_count_inc(current->mm);
+    current->cr3 = PADDR(current->mm->pgdir);
+
+
+    
+
+out:
+    kfree(pheaders);
+    // cprintf("GOOD\n");
+
+    return 0;
+mm_failed:
+    mm_destroy(current->mm);
+
+    return -1;
 }
 
 // this function isn't very correct in LAB8
@@ -816,6 +988,9 @@ const char *argv[] = {path, ##__VA_ARGS__, NULL};       \
 // user_main - kernel thread used to exec a user program
 static int
 user_main(void *arg) {
+    cprintf("USER_MAIN RUNNING!!!!!!\n");
+
+
 #ifdef TEST
 #ifdef TESTSCRIPT
     KERNEL_EXECVE3(TEST, TESTSCRIPT);
